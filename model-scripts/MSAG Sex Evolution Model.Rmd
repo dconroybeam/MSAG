@@ -1,0 +1,247 @@
+```{r packages}
+
+```
+
+
+
+```{r parameters}
+
+#Number of times to repeat entire model
+modelLoops<-100
+
+
+
+#Number of generations
+generations<-100
+
+
+
+#Minimum resources for offspring viability
+resourceThreshold<-5
+
+
+
+#Total resources agents will have for producing gametes
+resources<-resourceThreshold*20
+
+
+
+#Maximum number of gametes an agent will be allowed to produce
+maxGametes<-100
+
+
+
+#Population size
+popSize<-300
+
+
+
+#Mutation rate
+mutationRate<-.05
+
+```
+
+
+
+```{r functions}
+
+
+#Agent Generation#
+#Generate the agents
+agentGenerate <- function(popSize) {
+  #Generate agents with
+  #gameteSizeGene = size of gametes produced
+  #fusionTargetGene = size of partners pursued for fusion
+  #Each agent has two sets of genes (inherited from parents)
+  #only the first gene will be expressed in gametes produced
+  agents <- data.frame(
+    "gameteSizeGene1" = rnorm(popSize, resourceThreshold / 2, 2),
+    "fusionTargetGene1" = rnorm(popSize, resourceThreshold / 2, 2),
+    "gameteSizeGene2" = rnorm(popSize, resourceThreshold / 2, 2),
+    "fusionTargetGene2" = rnorm(popSize, resourceThreshold / 2, 2)
+  )
+  
+  #Keep agent traits within bounds
+  agents <- data.frame(apply(agents, 2, function(x)
+    ifelse(
+      x > resources, resources, ifelse(x < (resources / maxGametes), (resources /
+                                                                        maxGametes), x)
+    )))
+  #Output agents
+  return(agents)
+}
+
+
+
+#Gamete Production#
+#A function to produce gametes
+gameteProduce <- function(agent) {
+  #Generate a gamete that expresses the first set of parent genes
+  #and randomly carries either set of the agent's genes
+  if (rbinom(1, 1, .5)) {
+    gamete <- agent[, c(1:2, 1:2)]
+  } else{
+    gamete <- agent
+  }
+  
+  #Label columns
+  colnames(gamete) <- c(
+    "gameteSizeExpressed",
+    "fusionTargetExpressed",
+    "gameteSizeGene",
+    "fusionTargetGene"
+  )
+  
+  #Output the gamete
+  return(gamete)
+  
+}
+
+
+
+#Reproduce#
+#Produce offspring from gametes
+reproduce <- function(focalGamete, targetGamete) {
+  #If the gametes together meet the minimum resource threshold
+  if ((focalGamete$gameteSizeExpressed + 
+       targetGamete$gameteSizeExpressed) >= resourceThreshold) {
+    #Generate the offspring from gametes
+    #Randomly determine which gamete's genes will be in the expressed (first) position
+    if (rbinom(1, 1, .5)) {
+      offspring <- c(
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene,
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene
+      )
+    } else {
+      offspring <- c(
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene,
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene
+      )
+    }
+    
+    #Mutation
+    offspring <- rnorm(4, offspring, mutationRate)
+    
+    #Convert to dataframe
+    offspring <- data.frame(t(offspring))
+    
+    #Label columns
+    colnames(offspring) <- c(
+      "gameteSizeGene1",
+      "fusionTargetGene1",
+      "gameteSizeGene2",
+      "fusionTargetGene2"
+    )
+    
+    #Keep offspring traits within bounds
+    offspring <- apply(offspring, 2, function(x)
+      ifelse(x > resources, resources, ifelse(
+        x < (resources / maxGametes), (resources / maxGametes), x
+      )))
+    
+    #Output offspring
+    return(data.frame(t(offspring)))
+  } else {
+    #If offspring is not viable, return nothing
+    return(NULL)
+  }
+  
+}
+
+
+
+#Gamete Fusion#
+#A function for simulating fusion of gametes
+fusion <- function(gametes) {
+  #Create a blank offspring dataframe
+  offspring <- data.frame(
+    "gameteSizeGene1" = NA,
+    "fusionTargetGene1" = NA,
+    "gameteSizeGene2" = NA,
+    "fusionTargetGene2" = NA
+  )
+  
+  #Convert gamete list to dataframe
+  gametes <- do.call(rbind.data.frame, gametes)
+  gametes<-as.data.frame(apply(gametes,2,unlist))
+  
+  #Randomly sort gamete dataframe
+  gametes <- gametes[sample(1:nrow(gametes)), ]
+  
+  #Loop through gametes
+  while (nrow(gametes)>1) {
+    #Select the first gamete to reproduce
+    focalGamete <- gametes[1, ]
+    
+    #Remove the focal gamete from the gamete matrix so it can't self-fuse
+    gametes <- gametes[-1, ]
+    
+    #Identify the gamete closest to the focal gamete's fusion target
+    targetGamete<-gametes[which.min(abs(gametes$gameteSizeExpressed -
+                                          focalGamete$fusionTargetExpressed)),]
+    
+    #Have the gametes fuse to produce an offspring
+    offspring<-rbind(offspring,reproduce(focalGamete, targetGamete))
+    
+    #Remove the target gamete from the gamete matrix
+    gametes<-gametes[-which.min(abs(gametes$gameteSizeExpressed -
+                                      focalGamete$fusionTargetExpressed)),]
+    
+  }
+  
+  #Output the offspring
+  return(offspring[-1, ])
+}
+
+```
+
+
+
+```{r modelStart}
+
+#Loop through model loops
+for (m in 1:modelLoops) {
+  #Generate the agents
+  agents <- agentGenerate(popSize)
+  
+  #Create a dataframe to store agents
+  data<-cbind("modelLoop"=m,"generation"=0,agents)
+  
+  #Loop through generations
+  for (g in 1:generations) {
+    #Generate gametes for each agent
+    gametes <- sapply(1:nrow(agents), function(x)
+      
+      as.matrix(t(
+        sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
+          gameteProduce(agents[x, ]))
+        
+      )))
+
+    #Have gametes fuse to produce offspring
+    offspring<-fusion(gametes)
+    
+    #Limit number of offspring to popSize
+    agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring),popSize))), ]
+    
+    #Save agents to overall data frame
+    data<-rbind(data,cbind("modelLoop"=m,"generation"=g,agents))
+    
+  }
+  
+  #Create a unique filename and filepath
+  path <- "model-outputs/sex-evolution/MSAG Sex Evolution Population "
+  
+  format <- ".csv"
+  date <- format(Sys.time(), format = "%Y%m%d %H%M")
+  file <- file.path(paste0(path, m, " ", date, format))
+  
+  #Save model data
+  write.csv(data, file = file, row.names = F)
+}
+
+```
