@@ -322,8 +322,7 @@ for (p in 1:populations) {
     #Limit number of offspring to popSize
     #Offspring whose parents invested more in parenting are more likely to survive
     offspring<-offspring[order(postReproMortalityRisk,decreasing=T),]
-    
-    agents<-offspring[min(c(nrow(offspring),popSize)),]
+    agents<-offspring[1:min(c(nrow(offspring),popSize)),]
     
     
     #Remove the first parentID column
