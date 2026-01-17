@@ -1,0 +1,354 @@
+```{r packages}
+
+```
+
+
+
+```{r parameters}
+
+#The number of agent populations (determined by prior simulation)
+populations<-length(list.files("model-outputs/sex-evolution/",full.names=T))
+
+
+
+#Number of generations
+generations<-100
+
+
+
+#Minimum resources for offspring viability
+resourceThreshold<-5
+
+
+
+#Total resources agents will have for producing gametes
+resources<-resourceThreshold*20
+
+
+
+#Maximum number of gametes an agent will be allowed to produce
+maxGametes<-100
+
+
+
+#Scales the likelihood of dying as a function of investment in mate competition
+#Max investors will have p = mateCompetitionCost probability of dying before gamete production
+mateCompetitionCost<-(.05)
+
+#Scales the increase in likelihood of reproducing as a function of investment in mate competition
+#Investment in mate competition will explain mateCompetitionBenefit % of the variance in reproduction priority
+mateCompetitionBenefit<-(.50)
+
+
+
+#Scales the impact of investment in parenting on gamete production budget
+#Max investors will have their gamete budget reduced to resources * (1-parentingCost)
+parentingCost<-(.05)
+
+#Scales the benefit of investment in parenting on offspring survival 
+#Investment in parenting will explain parentingBenefit % of the variance in offspring survival
+parentingBenefit<-(.50)
+
+
+
+#Mutation rate
+mutationRate<-.05
+
+```
+
+
+
+```{r functions}
+
+#Agent Generation#
+#Generate the agents
+agentGenerate <- function(population) {
+  
+  #Load the agents
+  agents<-read.csv(list.files("model-outputs/sex-evolution",full.names=T)[population])
+  
+  #Limit to just the final generation of agents
+  agents<-agents[agents$generation==max(agents$generation),]
+  
+  #Remove modelloop and generation columns for now
+  agents<-agents[,-(1:2)]
+  
+  row.names(agents)<-1:nrow(agents)
+  
+  #Add a trait that reflects investment in competition over access to mates
+  #As before, only Gene 1 will be expressed
+  agents$mateCompetitionGene1<-runif(nrow(agents),0,1)
+  agents$mateCompetitionGene2<-runif(nrow(agents),0,1)
+  
+  #Add a trait that reflects investment into parenting offspring
+  #As before, only Gene 1 will be expressed
+  agents$parentingGene1<-runif(nrow(agents),0,1)
+  agents$parentingGene2<-runif(nrow(agents),0,1)
+  
+  #Create a unique agent ID
+  agents$ID<-1:nrow(agents)
+  
+  agents<-agents[,c(9, 1:2,5,7,3:4,6,8)]
+  
+  #Output agents
+  return(agents)
+}
+
+
+
+#Gamete Production#
+#A function to produce gametes
+gameteProduce <- function(agent) {
+  #Generate a gamete that expresses the first set of parent genes
+  #and randomly carries either set of the agent's genes
+  if (rbinom(1, 1, .5)) {
+    gamete <- agent[, c(1,2:5, 2:5)]
+  } else{
+    gamete <- agent
+  }
+  
+  #Label columns
+  colnames(gamete) <- c(
+    'parentID',
+    "gameteSizeExpressed",
+    "fusionTargetExpressed",
+    "mateCompetitionExpressed",
+    "parentingExpressed",
+    "gameteSizeGene",
+    "fusionTargetGene",
+    "mateCompetitionGene",
+    "parentingGene"
+  )
+  
+  #Output the gamete
+  return(gamete)
+  
+}
+
+
+
+#Reproduce#
+#Produce offspring from gametes
+reproduce <- function(focalGamete, targetGamete) {
+  #If the gametes together meet the minimum resource threshold
+  if ((focalGamete$gameteSizeExpressed + 
+       targetGamete$gameteSizeExpressed) >= resourceThreshold) {
+    #Generate the offspring from gametes
+    #Randomly determine which gamete's genes will be in the expressed (first) position
+    if (rbinom(1, 1, .5)) {
+      offspring <- c(
+        focalGamete$parentID,
+        targetGamete$parentID,
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene,
+        focalGamete$mateCompetitionGene,
+        focalGamete$parentingGene,
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene,
+        targetGamete$mateCompetitionGene,
+        targetGamete$parentingGene
+      )
+    } else {
+      offspring <- c(
+        targetGamete$parentID,
+        focalGamete$parentID,
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene,
+        targetGamete$mateCompetitionGene,
+        targetGamete$parentingGene,
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene,
+        focalGamete$mateCompetitionGene,
+        focalGamete$parentingGene
+      )
+    }
+    
+    #Mutation
+    offspring[3:10] <- rnorm(8, offspring[3:10], mutationRate)
+    
+    #Convert to dataframe
+    offspring <- data.frame(t(offspring))
+    
+    #Label columns
+    colnames(offspring) <- c(
+      'parent1ID',
+      'parent2ID',
+      "gameteSizeGene1",
+      "fusionTargetGene1",
+      "mateCompetitionGene1",
+      "parentingGene1",
+      "gameteSizeGene2",
+      "fusionTargetGene2",
+      "mateCompetitionGene2",
+      "parentingGene2"
+    )
+    
+    #Keep offspring traits within bounds
+    offspring[c(3:4,7:8)] <- apply(offspring[c(3:4,7:8)], 2, function(x)
+      ifelse(x > resources, resources, ifelse(
+        x < (resources / maxGametes), (resources / maxGametes), x
+      )))
+    
+    offspring[c(5:6,9:10)] <- apply(offspring[c(5:6,9:10)],2, function(x)
+      ifelse(x>1, 1, ifelse(x<0, 0, x)))
+    
+    #Output offspring
+    return(data.frame(offspring))
+  } else {
+    #If offspring is not viable, return nothing
+    return(NULL)
+  }
+  
+}
+
+
+
+#Gamete Fusion#
+#A function for simulating fusion of gametes
+fusion <- function(gametes) {
+  #Create a blank offspring dataframe
+  offspring <- data.frame(
+    'parent1ID'=NA,
+    'parent2ID'=NA,
+    "gameteSizeGene1" = NA,
+    "fusionTargetGene1" = NA,
+    "mateCompetitionGene1" = NA,
+    "parentingGene1" = NA,
+    "gameteSizeGene2" = NA,
+    "fusionTargetGene2" = NA,
+    "mateCompetitionGene2" = NA,
+    "parentingGene2" = NA
+  )
+  
+  #Convert gamete list to dataframe
+  gametes <- do.call(rbind.data.frame, gametes)
+  gametes <- as.data.frame(apply(gametes, 2, unlist))
+  
+  #Sort gamete dataframe according to reproduction priority
+  
+  #Create a reproductionPriority variable based on mate competition trait
+  reproductionPriority<-gametes$mateCompetitionExpressed
+  
+  #Set ratio of variance in priority accounted for by competition equal to mateCompetitionBenefit
+  reproductionPriority<-reproductionPriority + rnorm(length(reproductionPriority),0,
+                                                   sqrt(var(reproductionPriority)*
+                                                          ((1-mateCompetitionBenefit)/
+                                                             mateCompetitionBenefit)))
+  
+  #Order gametes according to reproduction priority such that agents invested in competition tend to reproduce first
+  gametes <- gametes[order(reproductionPriority,decreasing=T), ]
+  
+  #Loop through gametes
+  while (nrow(gametes)>1) {
+    #Select the first gamete to reproduce
+    focalGamete <- gametes[1, ]
+    
+    #Remove the focal gamete from the gamete matrix so it can't self-fuse
+    gametes <- gametes[-1, ]
+    
+    #Identify the gamete closest to the focal gamete's fusion target
+    targetGamete<-gametes[which.min(abs(gametes$gameteSizeExpressed -
+                                          focalGamete$fusionTargetExpressed)),]
+    
+    #Have the gametes fuse to produce an offspring
+    offspring<-rbind(offspring,reproduce(focalGamete, targetGamete))
+    
+    #Remove the target gamete from the gamete matrix
+    gametes<-gametes[-which.min(abs(gametes$gameteSizeExpressed -
+                                      focalGamete$fusionTargetExpressed)),]
+    
+  }
+  
+  #Output the offspring
+  return(offspring[-1, ])
+}
+
+```
+
+
+
+```{r modelStart}
+
+#Loop through model loops
+for (p in 1:populations) {
+  
+  #Load in the agent population
+  agents <- agentGenerate(p)
+  
+  #Determine starting population size
+  popSize<-nrow(agents)
+  
+  #Create a dataframe to store agents
+  data<-cbind("modelLoop"=p,"generation"=0,agents)
+  
+  #Loop through generations
+  for (g in 1:generations) {
+    
+    #Pre-reproductive mortality
+    #Some agents die before getting to reproduce by virtue of their investment in mate competition
+    agents<-agents[which(rbinom(nrow(agents),
+                          1,
+                          1-(agents$mateCompetitionGene1*mateCompetitionCost))==1),]
+    
+    
+    #Reduce agent resources according to investment in parenting
+    #Some agents have their gamete budget reduced by virtue of investing in parenting
+    agentResources<-resources*(1-(agents$parentingGene1*parentingCost))
+    
+    #Generate gametes for each agent
+    gametes <- sapply(1:nrow(agents), function(x)
+      
+      as.matrix(t(
+        sapply(1:floor(agentResources[x]/ agents$gameteSizeGene1[x]), function(y)
+          gameteProduce(agents[x, ]))
+        
+      )))
+
+    #Have gametes fuse to produce offspring
+    offspring<-fusion(gametes)
+    
+    #Post-reproductive mortality
+    #Some offspring die by virtue of their parents' investment in parenting
+    #Create a variable to reflect post-reproductive mortality risk
+    postReproMortalityRisk<-agents$parentingGene1[match(offspring$parent1ID,agents$ID)] +
+      agents$parentingGene1[match(offspring$parent2ID,agents$ID)]
+    
+    #Set max/min equal to 1+2*parentingBenefit (multiplied by 2 to represent parenting contributions of each parent)
+    postReproMortalityRisk<-postReproMortalityRisk + rnorm(length(postReproMortalityRisk),0,
+                                                   sqrt(var(postReproMortalityRisk)*
+                                                          ((1-parentingBenefit)/
+                                                             parentingBenefit)))
+    
+    #Limit number of offspring to popSize
+    #Offspring whose parents invested more in parenting are more likely to survive
+    offspring<-offspring[order(postReproMortalityRisk,decreasing=T),]
+    
+    agents<-offspring[min(c(nrow(offspring),popSize)),]
+    
+    
+    #Remove the first parentID column
+    agents<-agents[,-1]
+    
+    #Rename it
+    colnames(agents)[1]<-"ID"
+    
+    #Assign new IDs
+    agents$ID<-1:nrow(agents)
+    
+    #Save agents to overall data frame
+    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,agents))
+    
+  }
+  
+  #Create a unique filename and filepath
+  path <- "model-outputs/sex-evolution/MSAG Sex Evolution Population "
+  
+  format <- ".csv"
+  date <- format(Sys.time(), format = "%Y%m%d %H%M")
+  file <- file.path(paste0(path, m, " ", date, format))
+  
+  #Save model data
+  write.csv(data, file = file, row.names = F)
+}
+
+```
