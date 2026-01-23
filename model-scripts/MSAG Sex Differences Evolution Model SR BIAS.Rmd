@@ -12,7 +12,7 @@ populations<-length(list.files("model-outputs/sex-evolution/",full.names=T))
 
 
 #Number of generations
-generations<-100
+generations<-30
 
 
 
@@ -127,7 +127,7 @@ reproduce <- function(focalGamete, targetGamete) {
   if ((focalGamete$gameteSizeExpressed + 
        targetGamete$gameteSizeExpressed) >= resourceThreshold &
       (focalGamete$gameteSizeExpressed - 
-       targetGamete$gameteSizeExpressed) >= 2
+       targetGamete$gameteSizeExpressed) >= 1.5
       ) {
     #Generate the offspring from gametes
     #Randomly determine which gamete's genes will be in the expressed (first) position
@@ -269,32 +269,61 @@ for (p in 1:populations) {
   #Loop through generations
   for (g in 1:generations) {
     
-    #Sex ratio biasing
-    #Cause some males to die before reproductive maturity to bias the sex ratio toward females
-    agents<-agents[rbinom(nrow(agents),1,ifelse(agents$gameteSizeGene1>3,1,sexRatio))==1,]
+    #Create a blank offspring dataframe
+    offspring <- data.frame(
+      'parent1ID' = NA,
+      'parent2ID' = NA,
+      "gameteSizeGene1" = NA,
+      "fusionTargetGene1" = NA,
+      "investCompetitionGene1" = NA,
+      "investParentingGene1" = NA,
+      "gameteSizeGene2" = NA,
+      "fusionTargetGene2" = NA,
+      "investCompetitionGene2" = NA,
+      "investParentingGene2" = NA
+    )
     
-    #Pre-reproductive mortality
-    #Some agents die before getting to reproduce by virtue of their investment in mate competition
-    agents<-agents[which(rbinom(nrow(agents),
-                          1,
-                          1-(agents$investCompetitionGene1*investCompetitionCost))==1),]
+    #Determine when agents arrive to the "breeding territory"
+    breedingArrival<-ifelse(agents$gameteSizeGene1>3,
+                            rbinom(nrow(agents),1,sexRatio)+1,
+                            rbinom(nrow(agents),1,1-sexRatio)+1)
     
-    
-    #Reduce agent resources according to investment in parenting
-    #Agents have their gamete budget reduced to the extent that they invested in parenting
-    agentResources<-resources*(1-(agents$investParentingGene1))
-
-    #Generate gametes for each agent
-    gametes <- sapply(1:nrow(agents), function(x)
+    #Separate mating into two different "periods" of a breeding season with staggered arrival
+    #Inspired by phalaropes
+    for (b in 1:2) {
       
-      as.matrix(t(
-        sapply(1:floor(agentResources[x]/ agents$gameteSizeGene1[x]), function(y)
-          gameteProduce(agents[x, ]))
+      #Identify the agents available to mate
+      breedingPopulation<-agents[breedingArrival==b,]
+      
+      #Pre-reproductive mortality
+      #Some agents die before getting to reproduce by virtue of their investment in mate competition
+      breedingPopulation <- breedingPopulation[which(rbinom(
+        nrow(breedingPopulation),
+        1,
+        1 - (breedingPopulation$investCompetitionGene1 * investCompetitionCost)
+      ) == 1), ]
+      
+      
+      #Reduce agent resources according to investment in parenting
+      #breedingPopulation have their gamete budget reduced to the extent that they invested in parenting
+      agentResources <- resources * (1 - (breedingPopulation$investParentingGene1))
+      
+      #Generate gametes for each agent
+      gametes <- sapply(1:nrow(breedingPopulation), function(x)
         
-      )))
-
-    #Have gametes fuse to produce offspring
-    offspring<-fusion(gametes)
+        as.matrix(t(
+          sapply(1:floor(agentResources[x] / breedingPopulation$gameteSizeGene1[x]), function(y)
+            gameteProduce(breedingPopulation[x, ]))
+          
+        )))
+      
+      #Have gametes fuse to produce offspring
+      offspring <- rbind(offspring,fusion(gametes))
+    }
+    
+    #Remove the row of NAs
+    offspring<-offspring[-1,]
+    
     
     #Post-reproductive mortality
     #Agents increase the likelihood of their offspring surviving to the extent that they invest in parenting
