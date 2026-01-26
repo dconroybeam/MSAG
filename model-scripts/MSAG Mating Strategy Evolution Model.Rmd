@@ -51,12 +51,12 @@ mutationRate<-.05
 #Relative selection on parental investment
 #Degree to which parental investment vs. mate value determines RS
 #Higher values means more selection on parental investment
-selectionPI<-c(.1,.9)
+selectionPI<-c(.3,.8)
 
 
 
 #Number of rounds over which mate choice will take place
-mateChoiceRounds<-30
+mateChoiceRounds<-10
 
 
 
@@ -90,18 +90,17 @@ agentGenerate <- function(population) {
   #Relabel rows
   row.names(agents)<-1:nrow(agents)
   
-  #Add a trait reflecting mating-parenting tradeoff
+  #Add a trait reflecting mating-parenting tradeoff, a mate preference, and corresponding trait
   agents$mpTradeoffGene1<-runif(nrow(agents),0,1)
+  agents$prefGene1<-rnorm(nrow(agents),.7,mutationRate)
+  agents$traitGene1<-rnorm(nrow(agents),.7,mutationRate)
+  
   agents$mpTradeoffGene2<-runif(nrow(agents),0,1)
-  
-
-  
-  #Add a trait reflecting mate value (this will not be inherited, so only needs 1 value)
-  agents$mvGene1<-runif(nrow(agents),0,1)
-  agents$mvGene2<-runif(nrow(agents),0,1)
+  agents$prefGene2<-rnorm(nrow(agents),.7,mutationRate)
+  agents$traitGene2<-rnorm(nrow(agents),.7,mutationRate)
   
   #Rearrange
-  agents<-agents[,c(1:5,10,12,6:9,11,13)]
+  agents<-agents[,c(1:5,10:12,6:9,13:15)]
   
   #Output agents
   return(agents)
@@ -119,16 +118,13 @@ mateChoice <- function(agents) {
   
   #Create a reciprocity matrix
   recip <- matrix(1, nrow(agents), nrow(agents))
-  
-  #Increase perceived MV (and therefore mating success) by virtue of investment in competition
-  agents$mvGene1 <- agents$mvGene1 + agents$investCompetitionGene1 * investCompetitionBenefit
-  
+
   #Create a matrix of each agent's value to each other agent
-  mvMatrix <- matrix(agents$mvGene1, nrow(agents), nrow(agents), byrow =
+  mvMatrix <- matrix(sapply(agents$prefGene1,function(x) 1-abs(agents$traitGene1-x)), nrow(agents), nrow(agents), byrow =
                        T)
   
-  #Add some random noise to make MV perceptions somewhat unique (and stabilize mutual mate choice a bit more)
-  mvMatrix<-mvMatrix+rnorm(length(mvMatrix),0,sqrt(var(agents$mvGene1)*.1))
+  #Add MV to agents who invested in mate competition
+  mvMatrix<-mvMatrix+matrix(agents$investCompetitionGene1 * investCompetitionBenefit, nrow(agents),nrow(agents),byrow=T)
 
   #Blank out values of same "sex" agents
   mvMatrix <- t(sapply(1:nrow(agents), function(x)
@@ -246,23 +242,29 @@ reproduce <- function(agents, mateChoices, selectionPI) {
   mateChoices<-mateChoices[mateChoices[,3]>0 & mateChoices[,4] > 0,]
   
   #Add in parent MVs
-  mateChoices$p1Mv<-agents$mvGene1[match(mateChoices$agent1ID,agents$ID)]
-  mateChoices$p2Mv<-agents$mvGene1[match(mateChoices$agent2ID,agents$ID)]
+  mateChoices$p1Mv<-1-abs(agents$traitGene1[match(mateChoices$agent1ID,agents$ID)]-.7)
+  mateChoices$p2Mv<-1-abs(agents$traitGene1[match(mateChoices$agent2ID,agents$ID)]-.7)
   
-  #Add in parent parental investment
+  #Add in investment
   mateChoices$p1Investment<-(1-agents$mpTradeoffGene1[match(mateChoices$agent1ID,agents$ID)])
   mateChoices$p2Investment<-(1-agents$mpTradeoffGene1[match(mateChoices$agent2ID,agents$ID)])
   
-  #Compute the probability weight for producing offspring
-  mateChoices$pOffspring <- (1 - selectionPI) * (mateChoices$p1Mv + mateChoices$p2Mv) +
-    (selectionPI) * (mateChoices$p1Investment + mateChoices$p2Investment)
+  #Calculate overall parent MVs and investment
+  mateChoices$mv<-as.numeric(scale(mateChoices$p1Mv+mateChoices$p2Mv))
+  mateChoices$investment<-as.numeric(scale(mateChoices$p1Investment+mateChoices$p2Investment))
+
+  #Compute into a noisy weight to determine which parents produce offspring
+  mateChoices$pOffspring <-(1 - selectionPI) * (mateChoices$mv + rnorm(nrow(mateChoices),0,sd(mateChoices$mv))) +
+    (selectionPI) * mateChoices$investment
   
+  #Sort by reproduction weight
   mateChoices<-mateChoices[order(mateChoices$pOffspring,decreasing=T),]
   
+  #Select the agents that get to reproduce
   parents<-mateChoices[1:min(c(nrow(mateChoices),floor(1.2*popSize/mateChoiceRounds))),]
-
+  
   #Create a blank dataframe for storing offspring
-  offspring<-agents[0,c(1,1:13)]
+  offspring<-agents[0,c(1,1:15)]
   
   #Rearrange and relabel
   colnames(offspring)[1:2]<-c("parent1ID","parent2ID")
@@ -282,12 +284,12 @@ reproduce <- function(agents, mateChoices, selectionPI) {
     #Create the offspring using the randomly determined genes
     if(expressedParent==1){
       child<-cbind(parent1$ID,parent2$ID,
-                   if(expressedGenes[1]==1){parent1[,c(2:7)]} else{parent1[,c(8:13)]},
-                   if(expressedGenes[2]==1){parent2[,c(2:7)]} else{parent2[,c(8:13)]})
+                   if(expressedGenes[1]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]},
+                   if(expressedGenes[2]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]})
     } else {
       child<-cbind(parent2$ID,parent1$ID,
-             if(expressedGenes[1]==1){parent2[,c(2:7)]} else{parent2[,c(8:13)]},
-             if(expressedGenes[2]==1){parent1[,c(2:7)]} else{parent1[,c(8:13)]})
+             if(expressedGenes[1]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]},
+             if(expressedGenes[2]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]})
 
     }
     
@@ -299,10 +301,10 @@ reproduce <- function(agents, mateChoices, selectionPI) {
   }
   
   #Add mutation to relevant genes
-  offspring[,c(5:8,11:14)]<-offspring[,c(5:8,11:14)]+rnorm(nrow(offspring)*8,0,mutationRate)
+  offspring[,c(7:9,14:16)]<-offspring[,c(7:9,14:16)]+rnorm(nrow(offspring)*6,0,mutationRate)
   
   #Prevent trait values out of bounds
-  offspring[,c(5:8,11:14)]<-apply(offspring[c(5:8,11:14)],2, function(x)
+  offspring[,c(7:9,14:16)]<-apply(offspring[c(7:9,14:16)],2, function(x)
       ifelse(x>1, 1, ifelse(x<0, 0, x)))
   
   #Output the offspring
@@ -338,7 +340,7 @@ for (p in 1:populations) {
     
     #Loop through generations
     for (g in 1:generations) {
-      
+
       #Pre-reproductive mortality
       #Some agents die before getting to reproduce by virtue of their investment in mate competition
       agents <- agents[which(rbinom(
