@@ -37,12 +37,6 @@ investCompetitionCost<-(.33)
 
 
 
-#Scales the benefit of investment in competition to mating success
-#Max investers will have their mate quality increased by investCompetitionBenefit
-investCompetitionBenefit<-.33
-
-
-
 #Mutation rate
 mutationRate<-.05
 
@@ -51,12 +45,12 @@ mutationRate<-.05
 #Relative selection on parental investment
 #Degree to which parental investment vs. mate value determines RS
 #Higher values means more selection on parental investment
-selectionPI<-c(.3,.8)
+selectionPI<-c(.2,.8)
 
 
 
 #Number of rounds over which mate choice will take place
-mateChoiceRounds<-10
+reproductionRounds<-10
 
 
 
@@ -112,20 +106,14 @@ agentGenerate <- function(population) {
 #Mate Choice#
 #A function to simulate RWTS mate choice among agents
 mateChoice <- function(agents) {
-  
-  #Create an investment matrix
-  invest <- matrix(1, nrow(agents), nrow(agents))
-  
-  #Create a reciprocity matrix
-  recip <- matrix(1, nrow(agents), nrow(agents))
 
   #Create a matrix of each agent's value to each other agent
-  mvMatrix <- matrix(sapply(agents$prefGene1,function(x) 1-abs(agents$traitGene1-x)), nrow(agents), nrow(agents), byrow =
-                       T)
+  mvMatrix <- matrix(sapply(agents$prefGene1, function(x)
+    1 - abs(agents$traitGene1 - x)),
+    nrow(agents),
+    nrow(agents),
+    byrow = T)
   
-  #Add MV to agents who invested in mate competition
-  mvMatrix<-mvMatrix+matrix(agents$investCompetitionGene1 * investCompetitionBenefit, nrow(agents),nrow(agents),byrow=T)
-
   #Blank out values of same "sex" agents
   mvMatrix <- t(sapply(1:nrow(agents), function(x)
     mvMatrix[x, ] <- ifelse((agents$gameteSizeGene1[x] < 3 &
@@ -136,40 +124,8 @@ mateChoice <- function(agents) {
                             mvMatrix[x, ]
     )))
   
-  #Loop through pursuits
-  for (o in 1:nPursuits) {
-    #Compute reward matrix
-    rewardMatrix <- mvMatrix * recip
-    
-    #Identify agent choices
-    choiceMatrix <- cbind(1:nrow(agents), t(apply(rewardMatrix, 1, function(x)
-      order(x, decreasing = T)[1:maxMates])))
-    
-    #Remove choices beyond the agent's pursuit number
-    choiceMatrix[, -1] <- t(sapply(1:nrow(choiceMatrix), function(x)
-      c(choiceMatrix[x, (1:agents$pursuits[x]) + 1], rep(
-        NA, (maxMates - agents$pursuits[x])
-      ))))
-    
-    #Prevent choices with unmatchable partners
-    choiceMatrix[, -1] <- t(sapply(1:nrow(choiceMatrix), function(x)
-      ifelse(is.na(rewardMatrix[x, choiceMatrix[x, -1]]), NA, choiceMatrix[x, -1])))
-    
-    #Update invest matrix based on choices
-    for (u in 1:maxMates) {
-      invest[choiceMatrix[complete.cases(choiceMatrix[, u + 1]), c(1, u + 1)]] <-
-        invest[choiceMatrix[complete.cases(choiceMatrix[, u + 1]), c(1, u + 1)]] +
-        1
-    }
-    
-    #Update reciprocity matrix
-    recip <- t(invest) / (t(invest) + invest)
-    
-  }
-  
-  
-  #Determine final choice matrix
-  choiceMatrix <- cbind(1:nrow(agents), t(apply(invest, 1, function(x)
+  #Identify agent choices
+  choiceMatrix <- cbind(1:nrow(agents), t(apply(mvMatrix, 1, function(x)
     order(x, decreasing = T)[1:maxMates])))
   
   #Remove choices beyond the agent's pursuit number
@@ -180,18 +136,10 @@ mateChoice <- function(agents) {
   
   #Prevent choices with invalid partners
   choiceMatrix[, -1] <- t(sapply(1:nrow(choiceMatrix), function(x)
-    ifelse(is.na(rewardMatrix[x, choiceMatrix[x, -1]]), NA, choiceMatrix[x, -1])))
-  
-  #Limit to mutual mate choices
-  choiceMatrix[, -1] <- t(sapply(1:nrow(choiceMatrix), function(x)
-    sapply(2:ncol(choiceMatrix), function(y)
-      ifelse(!(x %in% choiceMatrix[choiceMatrix[x, y], ]), NA, choiceMatrix[x, y]))))
+    ifelse(is.na(mvMatrix[x, choiceMatrix[x, -1]]), NA, choiceMatrix[x, -1])))
   
   #Convert indexes to IDs
   choiceMatrix<-apply(choiceMatrix,2,function(x) agents$ID[x])
-  
-  #Remove agents who failed to pair at all
-  choiceMatrix <- choiceMatrix[rowMeans(is.na(choiceMatrix[, -1])) < 1, ]
   
   #Reshape matrix
   choiceMatrix <- cbind(rep(choiceMatrix[, 1], each =
@@ -200,13 +148,6 @@ mateChoice <- function(agents) {
   
   #Remove NAs
   choiceMatrix <- choiceMatrix[complete.cases(choiceMatrix), ]
-  
-  #Reorder columns so that agent1 is always the agent with the lower ID
-  choiceMatrix <- t(apply(choiceMatrix, 1, function(x)
-    sort(x)))
-  
-  #Remove duplicate entries of each agent couple
-  choiceMatrix <- choiceMatrix[!duplicated(choiceMatrix), ]
   
   #Convert to dataframe
   choiceMatrix<-data.frame(choiceMatrix)
@@ -224,44 +165,35 @@ mateChoice <- function(agents) {
 #Produce offspring from parents
 reproduce <- function(agents, mateChoices, selectionPI) {
   
-  #Determine how many gametes agents have to dedicate to each pairing
-  mateChoices$p1NumGametes<-agents$gametes[match(mateChoices$agent1ID,agents$ID)]/
-    sapply(mateChoices$agent1ID,function(x) sum(x==c(mateChoices$agent1ID,mateChoices$agent2ID)))
-  mateChoices$p2NumGametes<-agents$gametes[match(mateChoices$agent2ID,agents$ID)]/
-    sapply(mateChoices$agent2ID,function(x) sum(x==c(mateChoices$agent1ID,mateChoices$agent2ID)))
+  #Allocate gametes across mate choices
   
-  #For agents with fewer gametes than mates, determine which mating opportunities get gametes probabilistically
-  mateChoices$p1NumGametes[mateChoices$p1NumGametes<1]<-rbinom(length(mateChoices$p1NumGametes[mateChoices$p1NumGametes<1]),
-                                                               1,
-                                                               mateChoices$p1NumGametes[mateChoices$p1NumGametes<1])
-  mateChoices$p2NumGametes[mateChoices$p2NumGametes<1]<-rbinom(length(mateChoices$p2NumGametes[mateChoices$p2NumGametes<1]),
-                                                               1,
-                                                               mateChoices$p2NumGametes[mateChoices$p2NumGametes<1])
+  #Identify how invested in mate competition each agent is
+  mateChoices$comp<-agents$investCompetitionGene1[match(mateChoices[,1],agents$ID)]
   
-  #Remove any pairings where either agent had 0 gametes
-  mateChoices<-mateChoices[mateChoices[,3]>0 & mateChoices[,4] > 0,]
+  #Order the mate choices by decreasing investment in competition
+  mateChoices<-mateChoices[order(mateChoices$comp,decreasing=T),]
   
-  #Add in parent MVs
-  mateChoices$p1Mv<-1-abs(agents$traitGene1[match(mateChoices$agent1ID,agents$ID)]-.7)
-  mateChoices$p2Mv<-1-abs(agents$traitGene1[match(mateChoices$agent2ID,agents$ID)]-.7)
+  #Create a blank dataframe to store viable mate choices
+  parents<-mateChoices[0,]
   
-  #Add in investment
-  mateChoices$p1Investment<-(1-agents$mpTradeoffGene1[match(mateChoices$agent1ID,agents$ID)])
-  mateChoices$p2Investment<-(1-agents$mpTradeoffGene1[match(mateChoices$agent2ID,agents$ID)])
+  #Loop through all mate choices
+  for(o in 1:nrow(mateChoices)){
+    
+    #If the associated  agents still have gametes...
+    if(agents$gametes[match(mateChoices[o,1],agents$ID)]> 0 & 
+       agents$gametes[match(mateChoices[o,2],agents$ID)]> 0){
+      
+      #Add them to the dataframe of matings
+      parents<-rbind(parents,mateChoices[o,])
+      
+      #And decrement their gamete counts
+      agents$gametes[match(mateChoices[o,1],agents$ID)]<-agents$gametes[match(mateChoices[o,1],agents$ID)]-1
+      agents$gametes[match(mateChoices[o,2],agents$ID)]<-agents$gametes[match(mateChoices[o,2],agents$ID)]-1
+      
+      
+    }
+  }
   
-  #Calculate overall parent MVs and investment
-  mateChoices$mv<-as.numeric(scale(mateChoices$p1Mv+mateChoices$p2Mv))
-  mateChoices$investment<-as.numeric(scale(mateChoices$p1Investment+mateChoices$p2Investment))
-
-  #Compute into a noisy weight to determine which parents produce offspring
-  mateChoices$pOffspring <-(1 - selectionPI) * (mateChoices$mv + rnorm(nrow(mateChoices),0,sd(mateChoices$mv))) +
-    (selectionPI) * mateChoices$investment
-  
-  #Sort by reproduction weight
-  mateChoices<-mateChoices[order(mateChoices$pOffspring,decreasing=T),]
-  
-  #Select the agents that get to reproduce
-  parents<-mateChoices[1:min(c(nrow(mateChoices),floor(1.2*popSize/mateChoiceRounds))),]
   
   #Create a blank dataframe for storing offspring
   offspring<-agents[0,c(1,1:15)]
@@ -272,6 +204,7 @@ reproduce <- function(agents, mateChoices, selectionPI) {
   #Loop through parents dataframe to create offspring
   for(r in 1:nrow(parents)){
     
+    #Identify parents
     parent1<-agents[agents$ID==parents$agent1ID[r],]
     parent2<-agents[agents$ID==parents$agent2ID[r],]
     
@@ -288,9 +221,9 @@ reproduce <- function(agents, mateChoices, selectionPI) {
                    if(expressedGenes[2]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]})
     } else {
       child<-cbind(parent2$ID,parent1$ID,
-             if(expressedGenes[1]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]},
-             if(expressedGenes[2]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]})
-
+                   if(expressedGenes[1]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]},
+                   if(expressedGenes[2]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]})
+      
     }
     
     #Relabel columns
@@ -301,11 +234,11 @@ reproduce <- function(agents, mateChoices, selectionPI) {
   }
   
   #Add mutation to relevant genes
-  offspring[,c(7:9,14:16)]<-offspring[,c(7:9,14:16)]+rnorm(nrow(offspring)*6,0,mutationRate)
+  offspring[,c(5:9,12:16)]<-offspring[,c(5:9,12:16)]+rnorm(nrow(offspring)*10,0,mutationRate)
   
   #Prevent trait values out of bounds
-  offspring[,c(7:9,14:16)]<-apply(offspring[c(7:9,14:16)],2, function(x)
-      ifelse(x>1, 1, ifelse(x<0, 0, x)))
+  offspring[,c(5:9,12:16)]<-apply(offspring[c(5:9,12:16)],2, function(x)
+    ifelse(x>1, 1, ifelse(x<0, 0, x)))
   
   #Output the offspring
   return(offspring)
@@ -322,6 +255,7 @@ reproduce <- function(agents, mateChoices, selectionPI) {
 #Loop through model loops
 for (p in 1:populations) {
   
+  #Loop through strength of selection on parental investment
   for (s in selectionPI) {
     
     #Load in the agent population
@@ -358,24 +292,24 @@ for (p in 1:populations) {
       #Determine how many gametes each agent produces
       agents$gametes <- floor(agents$resources / agents$gameteSizeGene1)
       
-      
       #Determine the number of mates each agent will pursue each round
       #1 is added to prevent agents who cannot mate at all; 1 is subtracted from maxMates to compensate
       agents$pursuits <- ceiling(agents$mpTradeoffGene1 * (maxMates - 1)) + 1
       
+      #Simulating mate choice just once because it takes a while
+      mateChoices <- mateChoice(agents)
       
-      #Loop through rounds of mate choice
-      for (m in 1:mateChoiceRounds) {
+      #Loop through rounds of reproduction
+      for (o in 1:reproductionRounds) {
         
-        mateChoices <- mateChoice(agents)
-        
-        if (m == 1) {
+        if (o == 1) {
           offspring <- reproduce(agents, mateChoices, s)
         } else{
           offspring <- rbind(offspring, reproduce(agents, mateChoices, s))
         }
         
       }
+      
       
       
       #Post-reproductive mortality
@@ -395,8 +329,34 @@ for (p in 1:populations) {
       #Sort offspring by parents' investment in parenting
       offspring <- offspring[order(postReproMortalityRisk, decreasing = T), ]
       
-      #Select the top popSize agents by parental investment to survive
-      offspring <- offspring[1:min(c(nrow(offspring), popSize)), ]
+      #Select the top half of agents by parental investment to survive
+      offspring <- offspring[1:max(c(nrow(offspring)/2, popSize)), ]
+      
+      
+      
+      #Create a variable reflecting parents' mating/parenting tradeoff balance
+      #The contribution of this tradeoff to RS vs. noise is scaled by s, the selectionPI parameter
+      mpTradeoff <- (1 - s) * (rnorm(nrow(offspring), 0, 1)) +
+        s * (scale(1 - agents$mpTradeoffGene1[match(offspring$parent1ID, agents$ID)] +
+                     1 - agents$mpTradeoffGene1[match(offspring$parent2ID, agents$ID)]))
+      
+      #Order offspring by mating/parenting tradeoff + noise
+      offspring<-offspring[order(mpTradeoff,decreasing=T),]
+      
+      #Select the top half of agents by investment mating/parenting tradeoff to survive
+      offspring <- offspring[1:max(c(nrow(offspring)/2, popSize)), ]
+      
+      
+
+      #Identify the mate values of each offspring's parents
+      mv <- (1 - abs(agents$traitGene1[match(offspring$parent1ID, agents$ID)] - .7)) +
+        (1 - abs(agents$traitGene1[match(offspring$parent2ID, agents$ID)] - .7))
+      
+      #Sort offspring by parent MVs
+      offspring<-offspring[order(mv,decreasing=T),]
+      
+      #Select the top popSize agents by parent MV to survive
+      offspring <- offspring[1:min(c(nrow(offspring),popSize)), ]
       
       #Overwrite parents with offspring
       agents <- offspring[sample(1:nrow(offspring)), ]
