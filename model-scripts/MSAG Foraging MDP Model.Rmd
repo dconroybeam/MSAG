@@ -30,6 +30,16 @@ selStrength<-.5
 #Number of days agents experience
 lifeSpan<-1000
 
+
+
+#Learning rate for Q-learning
+learningRate<-.1
+
+
+
+#Discount rate for Q-learning
+discount<-.9
+
 ```
 
 
@@ -83,10 +93,10 @@ matrixSetup<-function(action, states, foragingVariables){
     if(foragingVariables$risk[foragingVariables$foodItem==action]==1){
       
       #Set the probability of success
-      transMatrix[[1]][,colnames(transMatrix[[1]]) == "successful"] <- .2
+      transMatrix[[1]][,colnames(transMatrix[[1]]) == "successful"] <- .5
       
       #Set the probability of failure
-      transMatrix[[1]][,colnames(transMatrix[[1]]) == "unsuccessful"] <- .8
+      transMatrix[[1]][,colnames(transMatrix[[1]]) == "unsuccessful"] <- .5
       
       #If the agent is injured, decrease the probability of success by 80%
       transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")),
@@ -191,12 +201,22 @@ agentGenerate <- function(population, actions, states) {
   #Rearrange
   agents<-agents[,c(1:8,16,9:15,17)]
   
+  #Create variables to track action history
+  agents$parentHist<-0
+  agents$meat1Hist<-0
+  agents$meat2Hist<-0
+  agents$plant1Hist<-0
+  agents$plant2Hist<-0
+  
   #Store a reward value
   agents$reward<-0
   
   #Initialize action value matrices for agents
   q <- lapply(1:nrow(agents), function(x)
-    matrix(1, length(actions), length(states), dimnames = list(actions, states)))
+    lapply(1:3,function(y)
+      matrix(0, length(actions), length(states), dimnames = list(actions, states))
+      )
+    )
   
   names(q)<-agents$ID
   
@@ -219,21 +239,17 @@ resample<-function(x,n){
 actionSelection<-function(agents,q){
   
   #Loop through agents....
-  chosenActions<-sapply(1:nrow(agents), function(x)
+  chosenActions <- sapply(1:nrow(agents), function(x)
     
     #On 95% of trials...
-    if(rbinom(1,1,.95)){
-      
+    if (rbinom(1, 1, .9)) {
       #Pick which ever action has maximum aciton value (ties broken randomly)
-      actions[resample(which(q[[as.character(agents$ID[x])]][,agents$state[x]]==
-                               max(q[[as.character(agents$ID[x])]][,agents$state[x]])),
-                       1)]
+      actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+                               max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
     } else{
-      
       #On 5% of trials, pick a random action
-      sample(actions,1)
-    }
-    )
+      sample(actions, 1)
+    })
   
   #Output the actions
   return(chosenActions)
@@ -269,22 +285,63 @@ transitions<-function(agents,chosenActions,tMatrices){
 }
 
 
-rewardCalc<-function(hhStates,actionResults){
+rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
   
   #Create a dataframe reflecting the new household states
   newStates<-hhStates
   
   #Loop through action results and update household states based on results
-  for(a in 1:nrow(actionResults)){
-    newStates[newStates$hh==actionResults$hh[a],
-              ifelse(actionResults$action[a]=="parent",2,
-                     ifelse(actionResults$action[a] %in% c("meat1","meat2"),3,4))]<-newStates[newStates$hh==actionResults$hh[a],
-              ifelse(actionResults$action[a]=="parent",2,
-                     ifelse(actionResults$action[a] %in% c("meat1","meat2"),3,4))] + actionResults$yield[a]
+  for(a in 1:nrow(agents)){
+    
+    #Determine new household states
+    newStates[newStates$hh==agents$hh[a],
+          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
+                 ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] %in% 
+                          c("meat1","meat2"),3,4))]<-newStates[newStates$hh==agents$hh[a],
+          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
+                 ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] %in% 
+                          c("meat1","meat2"),3,4))] + 
+      actionResults$yield[match(agents$ID[a],actionResults$agentID)]
+    
+    #Determine what resource the agent's action generated
+    actionResource<-ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)]=="parent",1,
+                           ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)] %in% 
+                                    c("meat1","meat2"),2,3))
+    
+    #Calculate the reward this action should generate
+    #Actions that generate the reward the household has the most of already results in 0 reward
+    agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
+                        0,
+                        actionResults$yield[match(agents$ID[a],actionResults$agentID)])
+    
+    #If the foraged good is practice-dependent, adjust reward based on level of experience
+    agentReward<-ifelse(actionResults$action[
+          match(agents$ID[a],
+                actionResults$agentID)] == "parent",
+          agentReward, ifelse(foragingVariables$practice[foragingVariables==actionResults$action[match(agents$ID[a],actionResults$agentID)]] == 0,
+      agentReward,
+      ifelse(agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]<lifeSpan*.1,
+             agentReward*.5,agentReward)))
+    
+    #Update agents' total rewards
+    agents$reward[a]<-agents$reward[a]+agentReward
+    
+    #Update agents' action history
+    agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]<-agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]+1
+    
+    #Determine the action-value estimates for the current state-action pair and the best state-action pair in the new state
+    currentStateQ<-q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]]
+    newStateQ<-max(q[[as.character(agents$ID[a])]][[resample(which(newStates[newStates$hh == agents$hh[a], -1] == max(newStates[newStates$hh == agents$hh[a], -1])), 1)]][, actionResults$newState[match(agents$ID[a], actionResults$agentID)]])
+    
+    #Implements action-value update using Q-learning
+    q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
+      currentStateQ + learningRate * (agentReward + (discount*newStateQ - currentStateQ))
   }
   
-  #TODO: how to reward doing the thing that causes balance vs. just yield
-  #Perhaps reward based on whether that resource was at minimum...?
+  #Update household states
+  hhStates<-newStates
+  
+  return(list(agents,q,hhStates))
 }
 
 
@@ -386,9 +443,15 @@ states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
 actions<-c("parent","meat1","meat2","plant1","plant2")
 
 #Create a dataframe reflecting the nature of foragable goods in this environment
-foragingVariables<-data.frame("foodItem"=actions[-1],"productivity"=0,"risk"=0,"danger"=0,"childCompat"=0)
+foragingVariables<-data.frame("foodItem"=actions[-1],
+                              "productivity"=0,
+                              "practice"=0,
+                              "risk"=0,
+                              "danger"=0,
+                              "childCompat"=0)
 
 foragingVariables$productivity<-rep(c(1,0),2)
+foragingVariables$practice<-c(1,0,0,0)
 foragingVariables$risk<-rep(c(1,0),each=2)
 foragingVariables$danger<-c(1,0,0,0)
 foragingVariables$childCompat<-rep(c(0,1),each=2)
@@ -458,10 +521,14 @@ for (p in 1:populations) {
     agents<-agents[order(agents$hh),]
     
     #Create a variable to store current status of household resources
-    hhStates<-data.frame("hh"=unique(agents$hh),"parenting"=0,"nutrientM"=0,"nutrientP"=0)
+    #Starts with parenting set at 1 for simplicity
+    hhStates<-data.frame("hh"=unique(agents$hh),"parenting"=1,"nutrientM"=0,"nutrientP"=0)
     
     #Give all agents a random starting state
     agents$state<-sample(states,nrow(agents),replace=T)
+    agents$hhState<-sapply(agents$hh,function(x)
+      resample(which(hhStates[hhStates$hh==x,-1]==max(hhStates[hhStates$hh==x,-1])),1)
+      )
     
     #Loop through days of agents' lives
     for(l in 1:lifeSpan){
@@ -469,10 +536,34 @@ for (p in 1:populations) {
       #Choose an action following epsilon-greedy policy
       chosenActions<-actionSelection(agents,q)
       
+      #For a random 20% of large gamete producers, change their action to parenting
+      #To represent obligatory parental investment demands
+      chosenActions[agents$gameteSizeGene1>3]<-ifelse(rbinom(sum(agents$gameteSizeGene1>3),1,.2),
+                                                      "parent",
+                                                      chosenActions[agents$gameteSizeGene1>3])
+      
       #Determine the state transitions and resource yield of those actions
       actionResults<-transitions(agents,chosenActions,tMatrices)
       
+      #Update reward, action values, and household states
+      reward<-rewardUpdate(agents,q,hhStates,actionResults,foragingVariables)
       
+      #Update agents based on these reward updates
+      agents<-reward[[1]]
+      
+      #And action value functions
+      q<-reward[[2]]
+      
+      #And household states
+      hhStates<-reward[[3]]
+      
+      #Update agent states
+      agents$state<-actionResults$newState[match(agents$ID,actionResults$agentID)]
+      
+      #And update household states
+      agents$hhState<-sapply(agents$hh,function(x)
+      resample(which(hhStates[hhStates$hh==x,-1]==max(hhStates[hhStates$hh==x,-1])),1)
+      )
       
     }
   }
