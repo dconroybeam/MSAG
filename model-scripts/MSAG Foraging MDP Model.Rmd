@@ -6,45 +6,205 @@
 
 ```{r parameters}
 
+#Populations#
 #The number of agent populations (determined by prior simulation)
-populations<-length(list.files("model-outputs/sex-diffs-evolution/",full.names=T))
+populations<-length(list.files("model-outputs/mating-strategy/",full.names=T))
 
 
 
+#Generations#
 #Number of generations
-generations<-50
+generations<-20
 
 
 
-#Mutation rate
+#Mutation Rate#
 mutationRate<-.05
 
 
 
 #Selection Strength#
 #Strength of selection on productivity
-selStrength<-.5
+selStrength<-5
 
 
 
-#Number of days agents experience
-lifeSpan<-1000
+#Environmental Change#
+#How often the environment changes from generation to generation
+environmentChange<-c(0,.5)
 
 
 
+#Agent States#
+#Create the set of possible states agents can be in
+states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
+
+
+
+#Foraging Actions#
+#Create the set of possible actions agents can take
+actions<-c("parent","meat1","meat2","plant1","plant2")
+
+
+
+#Lifespan#
+#Number of learning trials agents experience
+lifeSpan<-length(states)*length(actions)*10
+
+
+
+#Learning Rate#
 #Learning rate for Q-learning
 learningRate<-.1
 
 
 
+#Discount Rate#
 #Discount rate for Q-learning
 discount<-.9
+
+
+
+#Epsilon#
+#Initial epsilon for epislon greedy action selection
+epsilon<-1
+
+
+
+#Epsilon Decay Rate#
+#How quickly epsilon decays with time
+epsilonDecay<-1/lifeSpan
 
 ```
 
 
 
 ```{r functions}
+
+
+#Agent Generation#
+#Generate the agents
+agentGenerate <- function(population, actions, states) {
+  
+  #Load the agents
+  agents<-read.csv(list.files("model-outputs/mating-strategy/",full.names=T)[population])
+  
+  #Limit to just the final generation of agents
+  agents<-agents[agents$generation==max(agents$generation),]
+  
+  #Remove modelLoop, generation, and selection columns for now
+  agents<-agents[,-(1:3)]
+  
+  #Relabel rows
+  row.names(agents)<-1:nrow(agents)
+  
+  #Add a trait reflecting mating-parenting tradeoff, a mate preference, and corresponding trait
+  agents$learningGene1<-rbinom(nrow(agents),1,.5)
+  
+  agents$learningGene2<-rbinom(nrow(agents),1,.5)
+
+  #Rearrange
+  agents<-agents[,c(1:8,16,9:15,17)]
+  
+  #Create variables to track action history
+  agents$parentHist<-0
+  agents$meat1Hist<-0
+  agents$meat2Hist<-0
+  agents$plant1Hist<-0
+  agents$plant2Hist<-0
+  
+  #Store a reward value
+  agents$reward<-0
+  
+  #Initialize action value matrices for learning agents
+  q <- lapply(1:nrow(agents), function(x)
+    lapply(1:3, function(x)
+      matrix(
+          0,
+          length(actions),
+          length(states),
+          dimnames = list(actions, states)
+        )))
+
+  #Initialize action value matrices for non-learning agents
+  qInherit<-lapply(1:nrow(agents),function(x)
+    lapply(1:2,function(z)
+      lapply(1:3, function(y)
+        matrix(
+          0,
+          length(actions),
+          length(states),
+          dimnames = list(actions, states)
+        ))
+      )
+    )
+  
+  #Loop through inherited action value matrices
+  for(l in 1:length(qInherit)){
+    
+    #Randomly set probability of either foraging action to 1 when that action's
+    #nutrient is lowest
+    qInherit[[l]][[1]][[1]][1,]<-1
+    qInherit[[l]][[1]][[2]][sample(2:3,1),]<-1
+    qInherit[[l]][[1]][[3]][sample(4:5,1),]<-1
+    
+    qInherit[[l]][[2]][[1]][1,]<-1
+    qInherit[[l]][[2]][[2]][sample(2:3,1),]<-1
+    qInherit[[l]][[2]][[3]][sample(4:5,1),]<-1
+  }
+  
+  #Label action value matrioces    
+  names(q)<-agents$ID
+  names(qInherit)<-agents$ID
+
+  
+  #Output agents
+  return(list(agents,q,qInherit))
+}
+
+
+
+#Improved Sampling#
+#A sample function that will return a scalar if provided
+resample<-function(x,n){
+  if(length(x)>1){
+    return(sample(x,n))
+  } else{
+    return(x)
+  }
+}
+
+
+
+#Action Selection#
+#A function for selecting actions given agents' action-value functions and learning rule
+actionSelection<-function(agents,q, qInherit){
+  
+  #Loop through agents....
+  chosenActions <- sapply(1:nrow(agents), function(x)
+    
+    if (agents$learningGene1[x] == 1) {
+      #On 95% of trials...
+      if (rbinom(1, 1, max(c(.05, epsilon - epsilonDecay * l)))) {
+        #On some % of trials, pick a random action
+        sample(actions, 1)
+      } else{
+        #Pick which ever action has maximum action value (ties broken randomly)
+        actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+                                 max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+      }
+    } else {
+      #Pick which ever action has maximum action value (ties broken randomly)
+      actions[sample(1:length(actions), 1, prob = qInherit[[as.character(agents$ID[x])]][[1]][[agents$hhState[x]]][, agents$state[x]])]
+    }
+  )
+  
+  #Output the actions
+  return(chosenActions)
+  
+}
+
+
 
 #Transition Matrix Setup
 #A function to automatically generate transition matrices
@@ -154,11 +314,11 @@ matrixSetup<-function(action, states, foragingVariables){
       
       #Set probability of injury to half the probability of succeeding or failing
       transMatrix[[1]][1, "injuryChild"] <- sum(transMatrix[[1]][1, c("successful", "unsuccessful")] *
-                                                  .5)
+                                                  .75)
       
       #And decrease the probability of succeeding or failing
       transMatrix[[1]][1, c("successful", "unsuccessful")] <- transMatrix[[1]][1, c("successful", "unsuccessful")] *
-        .5
+        .25
     }
     
     #Set the productivity of the food item
@@ -167,7 +327,7 @@ matrixSetup<-function(action, states, foragingVariables){
     transMatrix[[2]][, "successful"] <- ifelse(foragingVariables$productivity[foragingVariables$foodItem ==
                                                                                 action] == 1,
                                                1 / transMatrix[[1]]["successful", "successful"],
-                                               .5 / transMatrix[[1]]["successful", "successful"])
+                                               .1 / transMatrix[[1]]["successful", "successful"])
     
   }
 
@@ -177,86 +337,8 @@ matrixSetup<-function(action, states, foragingVariables){
 }
 
 
-#Agent Generation#
-#Generate the agents
-agentGenerate <- function(population, actions, states) {
-  
-  #Load the agents
-  agents<-read.csv(list.files("model-outputs/mating-strategy/",full.names=T)[population])
-  
-  #Limit to just the final generation of agents
-  agents<-agents[agents$generation==max(agents$generation),]
-  
-  #Remove modelLoop, generation, and selection columns for now
-  agents<-agents[,-(1:3)]
-  
-  #Relabel rows
-  row.names(agents)<-1:nrow(agents)
-  
-  #Add a trait reflecting mating-parenting tradeoff, a mate preference, and corresponding trait
-  agents$learningGene1<-runif(nrow(agents),0,1)
-  
-  agents$learningGene2<-runif(nrow(agents),0,1)
 
-  #Rearrange
-  agents<-agents[,c(1:8,16,9:15,17)]
-  
-  #Create variables to track action history
-  agents$parentHist<-0
-  agents$meat1Hist<-0
-  agents$meat2Hist<-0
-  agents$plant1Hist<-0
-  agents$plant2Hist<-0
-  
-  #Store a reward value
-  agents$reward<-0
-  
-  #Initialize action value matrices for agents
-  q <- lapply(1:nrow(agents), function(x)
-    lapply(1:3,function(y)
-      matrix(0, length(actions), length(states), dimnames = list(actions, states))
-      )
-    )
-  
-  names(q)<-agents$ID
-  
-  #Output agents
-  return(list(agents,q))
-}
-
-
-
-resample<-function(x,n){
-  if(length(x)>1){
-    return(sample(x,n))
-  } else{
-    return(x)
-  }
-}
-
-
-
-actionSelection<-function(agents,q){
-  
-  #Loop through agents....
-  chosenActions <- sapply(1:nrow(agents), function(x)
-    
-    #On 95% of trials...
-    if (rbinom(1, 1, .9)) {
-      #Pick which ever action has maximum aciton value (ties broken randomly)
-      actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-                               max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-    } else{
-      #On 5% of trials, pick a random action
-      sample(actions, 1)
-    })
-  
-  #Output the actions
-  return(chosenActions)
-  
-}
-
-
+#A function for executing transitions through the MDP given agents' actions
 transitions<-function(agents,chosenActions,tMatrices){
   
   #Create a dataframe reflecting the result of each agent's action selection
@@ -267,16 +349,25 @@ transitions<-function(agents,chosenActions,tMatrices){
                      "newState"=rep(NA,nrow(agents)),
                      "yield"=NA)
   
-  #Loop through agents
+    #Loop through agents
   for(a in 1:nrow(agents)){
+    
+    #Adjust agent state based on sex
+    #Large gamete producers are treated as if they are in the parenting state with some probability
+    #To represent minimum obligatory parental investment
+    effectiveState<-ifelse(agents$gameteSizeGene1[a]<3,
+                           agents$state[a],
+                           ifelse(rbinom(1,1,.5),
+                                  "parenting",
+                                  agents$state[a]))
     
     #Determine the state transition
     result$newState[a]<-states[sample(1:length(states),
                                1,
-                               prob=tMatrices[[chosenActions[a]]][[1]][agents$state[a],])]
+                               prob=tMatrices[[chosenActions[a]]][[1]][effectiveState,])]
     
     #Determine the result of that transition
-    result$yield[a]<-tMatrices[[chosenActions[a]]][[2]][agents$state[a],result$newState[a]]
+    result$yield[a]<-tMatrices[[chosenActions[a]]][[2]][effectiveState,result$newState[a]]
     
   }
   
@@ -285,6 +376,9 @@ transitions<-function(agents,chosenActions,tMatrices){
 }
 
 
+
+#Reward Calculation#
+#A function for determing agents' reward given their states and actions
 rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
   
   #Create a dataframe reflecting the new household states
@@ -311,8 +405,8 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
     #Calculate the reward this action should generate
     #Actions that generate the reward the household has the most of already results in 0 reward
     agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
-                        0,
-                        actionResults$yield[match(agents$ID[a],actionResults$agentID)])
+                        actionResults$yield[match(agents$ID[a],actionResults$agentID)],
+                        actionResults$yield[match(agents$ID[a],actionResults$agentID)]*.25)
     
     #If the foraged good is practice-dependent, adjust reward based on level of experience
     agentReward<-ifelse(actionResults$action[
@@ -345,52 +439,53 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
 }
 
 
+
 #Reproduce#
 #Produce offspring from parents
-reproduce <- function(agents, mateChoices, selectionPI) {
+reproduce <- function(agents, qInherit) {
   
-  #Allocate gametes across mate choices
+  #Calculate total reward achieved by household
+  hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))
   
-  #Identify how invested in mate competition each agent is
-  mateChoices$comp<-agents$investCompetitionGene1[match(mateChoices[,1],agents$ID)]
+  #Rescale for use in determining relative reproductive success
+  hhReward<-hhReward-min(hhReward)
+  hhReward<-hhReward/max(hhReward)
+  hhReward<-hhReward+1/selStrength
   
-  #Order the mate choices by decreasing investment in competition
-  mateChoices<-mateChoices[order(mateChoices$comp,decreasing=T),]
-  
-  #Create a blank dataframe to store viable mate choices
-  parents<-mateChoices[0,]
-  
-  #Loop through all mate choices
-  for(o in 1:nrow(mateChoices)){
-    
-    #If the associated  agents still have gametes...
-    if(agents$gametes[match(mateChoices[o,1],agents$ID)]> 0 & 
-       agents$gametes[match(mateChoices[o,2],agents$ID)]> 0){
-      
-      #Add them to the dataframe of matings
-      parents<-rbind(parents,mateChoices[o,])
-      
-      #And decrement their gamete counts
-      agents$gametes[match(mateChoices[o,1],agents$ID)]<-agents$gametes[match(mateChoices[o,1],agents$ID)]-1
-      agents$gametes[match(mateChoices[o,2],agents$ID)]<-agents$gametes[match(mateChoices[o,2],agents$ID)]-1
-      
-      
-    }
-  }
-  
+  #Determine which households get to produce offspring
+  parents<-sample(1:length(hhReward),popSize,replace=T,prob=hhReward)
   
   #Create a blank dataframe for storing offspring
-  offspring<-agents[0,c(1,1:15)]
+  offspring<-agents[0,1:23]
   
-  #Rearrange and relabel
-  colnames(offspring)[1:2]<-c("parent1ID","parent2ID")
+  #Initialize action value matrices for agents
+  offspringQ <- lapply(1:popSize, function(x)
+    lapply(1:3, function(x)
+      matrix(
+          0,
+          length(actions),
+          length(states),
+          dimnames = list(actions, states)
+        )))
+
+  #Initialize action probability weights for non-learning agents
+  offspringQInherit<-lapply(1:popSize,function(x)
+    lapply(1:2,function(z)
+      lapply(1:3, function(y)
+        matrix(
+          0,
+          length(actions),
+          length(states),
+          dimnames = list(actions, states)
+        ))
+      )
+    )
   
-  #Loop through parents dataframe to create offspring
-  for(r in 1:nrow(parents)){
-    
-    #Identify parents
-    parent1<-agents[agents$ID==parents$agent1ID[r],]
-    parent2<-agents[agents$ID==parents$agent2ID[r],]
+  #Loop through reproducing agents
+  for(r in 1:length(parents)){
+    #Extract each parent
+    parent1<-agents[agents$hh==unique(agents$hh)[parents[r]],][1,]
+    parent2<-agents[agents$hh==unique(agents$hh)[parents[r]],][2,]
     
     #Determine which parents' genes will be expressed
     expressedParent<-sample(1:2,1)
@@ -400,14 +495,20 @@ reproduce <- function(agents, mateChoices, selectionPI) {
     
     #Create the offspring using the randomly determined genes
     if(expressedParent==1){
-      child<-cbind(parent1$ID,parent2$ID,
-                   if(expressedGenes[1]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]},
-                   if(expressedGenes[2]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]})
-    } else {
-      child<-cbind(parent2$ID,parent1$ID,
-                   if(expressedGenes[1]==1){parent2[,c(2:8)]} else{parent2[,c(9:15)]},
-                   if(expressedGenes[2]==1){parent1[,c(2:8)]} else{parent1[,c(9:15)]})
+      child<-cbind(parent1$ID,
+                   if(expressedGenes[1]==1){parent1[,c(2:9)]} else{parent1[,c(10:17)]},
+                   if(expressedGenes[2]==1){parent2[,c(2:9)]} else{parent2[,c(10:17)]},
+                   parent1[,18:23])
       
+      offspringQInherit[[r]][[1]]<-qInherit[[as.character(parent1$ID)]][[expressedGenes[1]]]
+      offspringQInherit[[r]][[2]]<-qInherit[[as.character(parent2$ID)]][[expressedGenes[2]]]
+    } else {
+      child<-cbind(parent2$ID,
+                   if(expressedGenes[1]==1){parent2[,c(2:9)]} else{parent2[,c(10:17)]},
+                   if(expressedGenes[2]==1){parent1[,c(2:9)]} else{parent1[,c(10:17)]},
+                   parent2[,18:23])
+      offspringQInherit[[r]][[1]]<-qInherit[[as.character(parent2$ID)]][[expressedGenes[1]]]
+      offspringQInherit[[r]][[2]]<-qInherit[[as.character(parent1$ID)]][[expressedGenes[2]]]
     }
     
     #Relabel columns
@@ -418,51 +519,50 @@ reproduce <- function(agents, mateChoices, selectionPI) {
   }
   
   #Add mutation to relevant genes
-  offspring[,c(5:9,12:16)]<-offspring[,c(5:9,12:16)]+rnorm(nrow(offspring)*10,0,mutationRate)
+  offspring$learningGene1<-ifelse(rbinom(nrow(offspring),1,mutationRate),
+                                  as.numeric(!offspring$learningGene1),
+                                  offspring$learningGene1)
   
-  #Prevent trait values out of bounds
-  offspring[,c(5:9,12:16)]<-apply(offspring[c(5:9,12:16)],2, function(x)
-    ifelse(x>1, 1, ifelse(x<0, 0, x)))
+  offspring$learningGene2<-ifelse(rbinom(nrow(offspring),1,mutationRate),
+                                  as.numeric(!offspring$learningGene2),
+                                  offspring$learningGene2)
+  
+  
+  offspringQInherit<-lapply(1:length(offspringQInherit),function(x)
+    lapply(1:2,function(y) 
+      lapply(1:3,function(z)
+          offspringQInherit[[x]][[y]][[z]]+rnorm(length(actions)*length(states),0,mutationRate)
+          )
+    )
+  )
+  
+  #Prevent values below 0 or above 1
+  offspringQInherit<-lapply(1:length(offspringQInherit),function(x)
+    lapply(1:2,function(y)
+      lapply(1:3,function(z) 
+      ifelse(offspringQInherit[[x]][[y]][[z]]<0,
+                    0,
+                    ifelse(offspringQInherit[[x]][[y]][[z]]>1,
+                           1,offspringQInherit[[x]][[y]][[z]]))
+    )
+      )
+    
+  )
+  
+  #Rename and re-label
+  rownames(offspring)<-1:nrow(offspring)
+  offspring$ID<-1:nrow(offspring)
+    
+  names(offspringQ)<-offspring$ID
+  names(offspringQInherit)<-offspring$ID
+  
+  #Set histories back to 0
+  offspring[,18:23]<-0
   
   #Output the offspring
-  return(offspring)
+  return(list(offspring,offspringQ,offspringQInherit))
   
 }
-
-
-```
-
-
-
-```{r environmentSetup}
-
-#Create the set of possible states agents can be in
-states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
-
-#Create the set of possible actions agents can take
-actions<-c("parent","meat1","meat2","plant1","plant2")
-
-#Create a dataframe reflecting the nature of foragable goods in this environment
-foragingVariables<-data.frame("foodItem"=actions[-1],
-                              "productivity"=0,
-                              "practice"=0,
-                              "risk"=0,
-                              "danger"=0,
-                              "childCompat"=0)
-
-foragingVariables$productivity<-rep(c(1,0),2)
-foragingVariables$practice<-c(1,0,0,0)
-foragingVariables$risk<-rep(c(1,0),each=2)
-foragingVariables$danger<-c(1,0,0,0)
-foragingVariables$childCompat<-rep(c(0,1),each=2)
-
-#Generate transition matrices for this environment
-tMatrices<-lapply(actions,function(x)
-  matrixSetup(x,states,foragingVariables)
-  )
-
-#Label appropriately
-names(tMatrices)<-actions
 
 
 ```
@@ -474,109 +574,207 @@ names(tMatrices)<-actions
 #Loop through model loops
 for (p in 1:populations) {
   
-  #Generate the population
-  popGen<-agentGenerate(p, actions, states)
-  
-  #Extract agents themselves
-  agents<-popGen[[1]]
-  
-  #Extract initial action value functions
-  q<-popGen[[2]]
-  
-  #Determine starting population size
-  popSize <- nrow(agents)
-  
-  #Create a dataframe to store agents
-  data <- cbind(
-    "modelLoop" = p,
-    "generation" = 0,
-    agents
-  )
-  
-  #Loop through generations
-  for (g in 1:generations) {
+  for (e in environmentChange) {
     
-    #Mating:
+    ###Environment Setup###
     
-    #Randomly pair each agent with an opposite-sex partner
-    agents$mID<-NA
-    agents$mID[agents$gameteSizeGene1>3]<-sample(agents$ID[agents$gameteSizeGene1<3],
-                                                 min(c(nrow(agents[agents$gameteSizeGene1<3,]),
-                                                       nrow(agents[agents$gameteSizeGene1>3,]))))
+    #Create the set of possible states agents can be in
+    states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
     
-    agents$mID<-ifelse(is.na(agents$mID)==1,
-                       agents$ID[match(agents$ID,agents$mID)],
-                       agents$mID)
+    #Create the set of possible actions agents can take
+    actions<-c("parent","meat1","meat2","plant1","plant2")
     
-    #Remove agents who fail to pair
-    agents<-agents[!is.na(agents$mID),]
+    #Create a dataframe reflecting the nature of foragable goods in this environment
+    foragingVariables<-data.frame("foodItem"=actions[-1],
+                                  "productivity"=0,
+                                  "practice"=0,
+                                  "risk"=0,
+                                  "danger"=0,
+                                  "childCompat"=0)
     
-    #And remove their action value functions
-    q<-q[names(q) %in% agents$ID]
+    #Set initial features for foraging actions
+    foragingVariables$productivity<-rep(c(1,0),2)
+    foragingVariables$practice<-c(1,0,0,0)
+    foragingVariables$risk<-rep(c(1,0),each=2)
+    foragingVariables$danger<-c(1,0,0,0)
+    foragingVariables$childCompat<-rep(c(0,1),each=2)
     
-    #Household states:
-    
-    #Assign each agent a household ID which is just the lower of the two mated agents' IDs
-    agents$hh<-pmin(agents$ID,agents$mID)
-    agents<-agents[order(agents$hh),]
-    
-    #Create a variable to store current status of household resources
-    #Starts with parenting set at 1 for simplicity
-    hhStates<-data.frame("hh"=unique(agents$hh),"parenting"=1,"nutrientM"=0,"nutrientP"=0)
-    
-    #Give all agents a random starting state
-    agents$state<-sample(states,nrow(agents),replace=T)
-    agents$hhState<-sapply(agents$hh,function(x)
-      resample(which(hhStates[hhStates$hh==x,-1]==max(hhStates[hhStates$hh==x,-1])),1)
+    #Generate transition matrices for this environment
+    tMatrices<-lapply(actions,function(x)
+      matrixSetup(x,states,foragingVariables)
       )
     
-    #Loop through days of agents' lives
-    for(l in 1:lifeSpan){
+    #Label appropriately
+    names(tMatrices)<-actions
+    
+    
+    
+    ###Population Generation###
+    
+    #Generate the population
+    popGen <- agentGenerate(p, actions, states)
+    
+    #Extract agents themselves
+    agents <- popGen[[1]]
+    
+    #Extract initial action value functions
+    q <- popGen[[2]]
+    
+    #Extract inherited q values
+    qInherit<-popGen[[3]]
+
+    
+    #Determine starting population size
+    popSize <- nrow(agents)
+    
+    #Create a dataframe to store agents
+    data <- cbind("modelLoop" = p, "generation" = 0, "environmentChange" = e, agents)
+    
+    #Loop through generations
+    for (g in 1:generations) {
       
-      #Choose an action following epsilon-greedy policy
-      chosenActions<-actionSelection(agents,q)
+      print(g)
+      print(table(agents$learningGene1))
       
-      #For a random 20% of large gamete producers, change their action to parenting
-      #To represent obligatory parental investment demands
-      chosenActions[agents$gameteSizeGene1>3]<-ifelse(rbinom(sum(agents$gameteSizeGene1>3),1,.2),
-                                                      "parent",
-                                                      chosenActions[agents$gameteSizeGene1>3])
+      #Change the environment with probability e
+      if (rbinom(1, 1, e)) {
+        
+        #Randomly change features of foraging actions
+        foragingVariables[, -1] <- rbinom(nrow(foragingVariables) * 
+                                            (ncol(foragingVariables) - 1), 1, .5)
+        
+        #Generate transition matrices for this new environment
+        tMatrices <- lapply(actions, function(x)
+          matrixSetup(x, states, foragingVariables))
+        
+        #Label appropriately
+        names(tMatrices) <- actions
+        
+      }
       
-      #Determine the state transitions and resource yield of those actions
-      actionResults<-transitions(agents,chosenActions,tMatrices)
       
-      #Update reward, action values, and household states
-      reward<-rewardUpdate(agents,q,hhStates,actionResults,foragingVariables)
+      #Mating:
       
-      #Update agents based on these reward updates
-      agents<-reward[[1]]
+      #Randomly pair each agent with an opposite-sex partner
+      agents$mID <- NA
       
-      #And action value functions
-      q<-reward[[2]]
+      #Split agents into learners and non-learners
+      learners<-agents[agents$learningGene1==1,]
+      nonLearners<-agents[agents$learningGene1==0,]
       
-      #And household states
-      hhStates<-reward[[3]]
+      #Pair agents with opposite sex partners
+      if(sum(learners$gameteSizeGene1>3) > sum(learners$gameteSizeGene1<3)){
+        learners$mID[learners$gameteSizeGene1 < 3] <- sample(learners$ID[learners$gameteSizeGene1 > 3], nrow(learners[learners$gameteSizeGene1 < 3, ]))
+      } else {
+        learners$mID[learners$gameteSizeGene1 > 3] <- sample(learners$ID[learners$gameteSizeGene1 < 3], nrow(learners[learners$gameteSizeGene1 > 3, ]))
+
+      }
       
-      #Update agent states
-      agents$state<-actionResults$newState[match(agents$ID,actionResults$agentID)]
+      #Update mate IDs
+      learners$mID <- ifelse(is.na(learners$mID) == 1, learners$ID[match(learners$ID, learners$mID)], learners$mID)
       
-      #And update household states
-      agents$hhState<-sapply(agents$hh,function(x)
-      resample(which(hhStates[hhStates$hh==x,-1]==max(hhStates[hhStates$hh==x,-1])),1)
+      #Pair agents with opposite sex partners
+      if(sum(nonLearners$gameteSizeGene1>3) > sum(nonLearners$gameteSizeGene1<3)){
+        nonLearners$mID[nonLearners$gameteSizeGene1 < 3] <- sample(nonLearners$ID[nonLearners$gameteSizeGene1 > 3], nrow(nonLearners[nonLearners$gameteSizeGene1 < 3, ]))
+      } else {
+        nonLearners$mID[nonLearners$gameteSizeGene1 > 3] <- sample(nonLearners$ID[nonLearners$gameteSizeGene1 < 3], nrow(nonLearners[nonLearners$gameteSizeGene1 > 3, ]))
+
+      }
+      
+      #Update mate IDs
+      nonLearners$mID <- ifelse(is.na(nonLearners$mID) == 1, nonLearners$ID[match(nonLearners$ID, nonLearners$mID)], nonLearners$mID)
+      
+      #Re-merge agents
+      agents<-rbind(learners,nonLearners)
+      
+      #Remove agents who fail to pair
+      agents <- agents[!is.na(agents$mID), ]
+      
+      #And remove their action value functions
+      q <- q[names(q) %in% agents$ID]
+      qInherit <- qInherit[names(qInherit) %in% agents$ID]
+
+      
+      
+      #Household states:
+      
+      #Assign each agent a household ID which is just the lower of the two mated agents' IDs
+      agents$hh <- pmin(agents$ID, agents$mID)
+      
+      #Create a variable to store current status of household resources
+      #Starts with parenting set at 1 for simplicity
+      hhStates <- data.frame(
+        "hh" = unique(agents$hh),
+        "parenting" = 1,
+        "nutrientM" = 0,
+        "nutrientP" = 0
       )
+      
+      #Give all agents a random starting state
+      agents$state <- sample(states, nrow(agents), replace = T)
+      agents$hhState <- sapply(agents$hh, function(x)
+        resample(which(hhStates[hhStates$hh == x, -1] == min(hhStates[hhStates$hh == x, -1])), 1))
+      
+      #Loop through days of agents' lives
+      for (l in 1:lifeSpan) {
+        #Choose an action following epsilon-greedy policy
+        chosenActions <- actionSelection(agents, q, qInherit)
+        
+        #Determine the state transitions and resource yield of those actions
+        actionResults <- transitions(agents, chosenActions, tMatrices)
+        
+        #Update reward, action values, and household states
+        reward <- rewardUpdate(agents, q, hhStates, actionResults, foragingVariables)
+        
+        #Update agents based on these reward updates
+        agents <- reward[[1]]
+        
+        #And action value functions based on whether agents learn or not
+        q <- reward[[2]]
+        
+        #And household states
+        hhStates <- reward[[3]]
+        
+        #Update agent states
+        agents$state <- actionResults$newState[match(agents$ID, actionResults$agentID)]
+        
+        #And update household states
+        agents$hhState <- sapply(agents$hh, function(x)
+          resample(which(hhStates[hhStates$hh == x, -1] == min(hhStates[hhStates$hh ==
+                                                                          x, -1])), 1))
+      }
+      
+      #Have agents reproduce in proportion to reward
+      offspring <- reproduce(agents, qInherit)
+      
+      #Save parent agents to overall data frame (to preserve action history)
+      data <- rbind(data,
+                    cbind(
+                      "modelLoop" = p,
+                      "generation" = g,
+                      "environmentChange" = e,
+                      agents[,1:23]
+                    ))
+      
+      #Overwrite parents with offspring
+      agents <- offspring[[1]]
+      q <- offspring[[2]]
+      qInherit <- offspring[[3]]
       
     }
+    
+    #Create a unique filename and filepath
+    path <- "model-outputs/foraging/learning-evolution/MSAG Foraging LE Population "
+    
+    format <- ".csv"
+    date <- format(Sys.time(), format = "%Y%m%d %H%M")
+    file <- file.path(paste0(path, p, ifelse(e == min(environmentChange), " CHANGE LO ", " CHANGE HI "), date, format))
+    
+    #Save model data
+    write.csv(data, file = file, row.names = F)
+    
   }
   
-  #Create a unique filename and filepath
-  path <- "model-outputs/mating-strategy/MSAG Mating Strategy Evolution Population "
-  
-  format <- ".csv"
-  date <- format(Sys.time(), format = "%Y%m%d %H%M")
-  file <- file.path(paste0(path, p, ifelse(s == min(selectionPI), " PI LO ", " PI HI "), date, format))
-  
-  #Save model data
-  write.csv(data, file = file, row.names = F)
 }
 
   
