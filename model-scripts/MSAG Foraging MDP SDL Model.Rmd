@@ -8,30 +8,19 @@
 
 #Populations#
 #The number of agent populations (determined by prior simulation)
-populations<-length(list.files("model-outputs/mating-strategy/",full.names=T))
+populations<-1
 
 
 
 #Generations#
 #Number of generations
-generations<-20
+generations<-1
 
 
 
-#Mutation Rate#
-mutationRate<-.05
-
-
-
-#Selection Strength#
-#Strength of selection on productivity
-selStrength<-5
-
-
-
-#Environmental Change#
-#How often the environment changes from generation to generation
-environmentChange<-c(0,.5)
+#Environments#
+#Determine which of two environments to simulate
+environments<-1:2
 
 
 
@@ -49,7 +38,7 @@ actions<-c("parent","meat1","meat2","plant1","plant2")
 
 #Lifespan#
 #Number of learning trials agents experience
-lifeSpan<-length(states)*length(actions)*10
+lifeSpan<-length(states)*length(actions)*100
 
 
 
@@ -73,7 +62,7 @@ epsilon<-1
 
 #Epsilon Decay Rate#
 #How quickly epsilon decays with time
-epsilonDecay<-1/lifeSpan
+epsilonDecay<-1/(250)
 
 ```
 
@@ -99,9 +88,9 @@ agentGenerate <- function(population, actions, states) {
   row.names(agents)<-1:nrow(agents)
   
   #Add a trait reflecting mating-parenting tradeoff, a mate preference, and corresponding trait
-  agents$learningGene1<-rbinom(nrow(agents),1,.5)
+  agents$learningGene1<-rbinom(nrow(agents),1,1)
   
-  agents$learningGene2<-rbinom(nrow(agents),1,.5)
+  agents$learningGene2<-rbinom(nrow(agents),1,1)
 
   #Rearrange
   agents<-agents[,c(1:8,16,9:15,17)]
@@ -185,7 +174,7 @@ actionSelection<-function(agents,q, qInherit){
     
     if (agents$learningGene1[x] == 1) {
       #On 95% of trials...
-      if (rbinom(1, 1, max(c(.05, epsilon - epsilonDecay * l)))) {
+      if (rbinom(1, 1, rbinom(1, 1, max(c(.05, epsilon - epsilonDecay * l))))) {
         #On some % of trials, pick a random action
         sample(actions, 1)
       } else{
@@ -366,6 +355,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                                1,
                                prob=tMatrices[[chosenActions[a]]][[1]][effectiveState,])]
     
+    
     #Determine yield of the agents' actions
     yield<-tMatrices[[chosenActions[a]]][[2]][effectiveState,result$newState[a]]
     
@@ -442,132 +432,6 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
 }
 
 
-
-#Reproduce#
-#Produce offspring from parents
-reproduce <- function(agents, qInherit) {
-  
-  #Calculate total reward achieved by household
-  hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))
-  
-  #Rescale for use in determining relative reproductive success
-  hhReward<-hhReward-min(hhReward)
-  hhReward<-hhReward/max(hhReward)
-  hhReward<-hhReward+1/selStrength
-  
-  #Determine which households get to produce offspring
-  parents<-sample(1:length(hhReward),popSize,replace=T,prob=hhReward)
-  
-  #Create a blank dataframe for storing offspring
-  offspring<-agents[0,1:23]
-  
-  #Initialize action value matrices for agents
-  offspringQ <- lapply(1:popSize, function(x)
-    lapply(1:3, function(x)
-      matrix(
-          0,
-          length(actions),
-          length(states),
-          dimnames = list(actions, states)
-        )))
-
-  #Initialize action probability weights for non-learning agents
-  offspringQInherit<-lapply(1:popSize,function(x)
-    lapply(1:2,function(z)
-      lapply(1:3, function(y)
-        matrix(
-          0,
-          length(actions),
-          length(states),
-          dimnames = list(actions, states)
-        ))
-      )
-    )
-  
-  #Loop through reproducing agents
-  for(r in 1:length(parents)){
-    #Extract each parent
-    parent1<-agents[agents$hh==unique(agents$hh)[parents[r]],][1,]
-    parent2<-agents[agents$hh==unique(agents$hh)[parents[r]],][2,]
-    
-    #Determine which parents' genes will be expressed
-    expressedParent<-sample(1:2,1)
-    
-    #Determine for both parents which of their genes will be inherited
-    expressedGenes<-sample(1:2,2,replace=T)
-    
-    #Create the offspring using the randomly determined genes
-    if(expressedParent==1){
-      child<-cbind(parent1$ID,
-                   if(expressedGenes[1]==1){parent1[,c(2:9)]} else{parent1[,c(10:17)]},
-                   if(expressedGenes[2]==1){parent2[,c(2:9)]} else{parent2[,c(10:17)]},
-                   parent1[,18:23])
-      
-      offspringQInherit[[r]][[1]]<-qInherit[[as.character(parent1$ID)]][[expressedGenes[1]]]
-      offspringQInherit[[r]][[2]]<-qInherit[[as.character(parent2$ID)]][[expressedGenes[2]]]
-    } else {
-      child<-cbind(parent2$ID,
-                   if(expressedGenes[1]==1){parent2[,c(2:9)]} else{parent2[,c(10:17)]},
-                   if(expressedGenes[2]==1){parent1[,c(2:9)]} else{parent1[,c(10:17)]},
-                   parent2[,18:23])
-      offspringQInherit[[r]][[1]]<-qInherit[[as.character(parent2$ID)]][[expressedGenes[1]]]
-      offspringQInherit[[r]][[2]]<-qInherit[[as.character(parent1$ID)]][[expressedGenes[2]]]
-    }
-    
-    #Relabel columns
-    colnames(child)<-colnames(offspring)
-    
-    #Add the child to the offspring dataframe
-    offspring<-rbind(offspring,child)
-  }
-  
-  #Add mutation to relevant genes
-  offspring$learningGene1<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  as.numeric(!offspring$learningGene1),
-                                  offspring$learningGene1)
-  
-  offspring$learningGene2<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  as.numeric(!offspring$learningGene2),
-                                  offspring$learningGene2)
-  
-  
-  offspringQInherit<-lapply(1:length(offspringQInherit),function(x)
-    lapply(1:2,function(y) 
-      lapply(1:3,function(z)
-          offspringQInherit[[x]][[y]][[z]]+rnorm(length(actions)*length(states),0,mutationRate)
-          )
-    )
-  )
-  
-  #Prevent values below 0 or above 1
-  offspringQInherit<-lapply(1:length(offspringQInherit),function(x)
-    lapply(1:2,function(y)
-      lapply(1:3,function(z) 
-      ifelse(offspringQInherit[[x]][[y]][[z]]<0,
-                    0,
-                    ifelse(offspringQInherit[[x]][[y]][[z]]>1,
-                           1,offspringQInherit[[x]][[y]][[z]]))
-    )
-      )
-    
-  )
-  
-  #Rename and re-label
-  rownames(offspring)<-1:nrow(offspring)
-  offspring$ID<-1:nrow(offspring)
-    
-  names(offspringQ)<-offspring$ID
-  names(offspringQInherit)<-offspring$ID
-  
-  #Set histories back to 0
-  offspring[,18:23]<-0
-  
-  #Output the offspring
-  return(list(offspring,offspringQ,offspringQInherit))
-  
-}
-
-
 ```
 
 
@@ -577,7 +441,7 @@ reproduce <- function(agents, qInherit) {
 #Loop through model loops
 for (p in 1:populations) {
   
-  for (e in environmentChange) {
+  for (e in environments) {
     
     ###Environment Setup###
     
@@ -595,12 +459,22 @@ for (p in 1:populations) {
                                   "danger"=0,
                                   "childCompat"=0)
     
-    #Set initial features for foraging actions
-    foragingVariables$productivity <- c(1,0,1,0)
-    foragingVariables$practice <- c(1, 0, 0, 0)
-    foragingVariables$risk <- c(1,1,0,0)
-    foragingVariables$danger <- c(1, 0, 0, 0)
-    foragingVariables$childCompat <- c(0,0,1,1)
+    if (e == 1) {
+      #Set initial features for foraging actions
+      foragingVariables$productivity <- c(1,0,1,0)
+      foragingVariables$practice <- c(1, 0, 0, 0)
+      foragingVariables$risk <- c(1,1,0,0)
+      foragingVariables$danger <- c(1, 0, 0, 0)
+      foragingVariables$childCompat <- c(0,0,1,1)
+    } else {
+      #Set initial features for foraging actions
+      foragingVariables$productivity <- c(1,0,1,0)
+      foragingVariables$practice <- c(0, 0, 0, 0)
+      foragingVariables$risk <- c(0,1,0,1)
+      foragingVariables$danger <- c(0, 1, 0, 1)
+      foragingVariables$childCompat <- c(1,1,1,1)
+    }
+    
     
     #Generate transition matrices for this environment
     tMatrices<-lapply(actions,function(x)
@@ -630,62 +504,24 @@ for (p in 1:populations) {
     #Determine starting population size
     popSize <- nrow(agents)
     
-    #Create a dataframe to store agents
-    data <- cbind("modelLoop" = p, "generation" = 0, "environmentChange" = e, agents)
-    
     #Loop through generations
     for (g in 1:generations) {
-      
-      #Change the environment with probability e
-      if (rbinom(1, 1, e)) {
-        
-        #Randomly change features of foraging actions
-        foragingVariables[, -1] <- rbinom(nrow(foragingVariables) * 
-                                            (ncol(foragingVariables) - 1), 1, .5)
-        
-        #Generate transition matrices for this new environment
-        tMatrices <- lapply(actions, function(x)
-          matrixSetup(x, states, foragingVariables))
-        
-        #Label appropriately
-        names(tMatrices) <- actions
-        
-      }
-      
       
       #Mating:
       
       #Randomly pair each agent with an opposite-sex partner
       agents$mID <- NA
       
-      #Split agents into learners and non-learners
-      learners<-agents[agents$learningGene1==1,]
-      nonLearners<-agents[agents$learningGene1==0,]
-      
       #Pair agents with opposite sex partners
-      if(sum(learners$gameteSizeGene1>3) > sum(learners$gameteSizeGene1<3)){
-        learners$mID[learners$gameteSizeGene1 < 3] <- sample(learners$ID[learners$gameteSizeGene1 > 3], nrow(learners[learners$gameteSizeGene1 < 3, ]))
+      if(sum(agents$gameteSizeGene1>3) > sum(agents$gameteSizeGene1<3)){
+        agents$mID[agents$gameteSizeGene1 < 3] <- sample(agents$ID[agents$gameteSizeGene1 > 3], nrow(agents[agents$gameteSizeGene1 < 3, ]))
       } else {
-        learners$mID[learners$gameteSizeGene1 > 3] <- sample(learners$ID[learners$gameteSizeGene1 < 3], nrow(learners[learners$gameteSizeGene1 > 3, ]))
+        agents$mID[agents$gameteSizeGene1 > 3] <- sample(agents$ID[agents$gameteSizeGene1 < 3], nrow(agents[agents$gameteSizeGene1 > 3, ]))
 
       }
       
       #Update mate IDs
-      learners$mID <- ifelse(is.na(learners$mID) == 1, learners$ID[match(learners$ID, learners$mID)], learners$mID)
-      
-      #Pair agents with opposite sex partners
-      if(sum(nonLearners$gameteSizeGene1>3) > sum(nonLearners$gameteSizeGene1<3)){
-        nonLearners$mID[nonLearners$gameteSizeGene1 < 3] <- sample(nonLearners$ID[nonLearners$gameteSizeGene1 > 3], nrow(nonLearners[nonLearners$gameteSizeGene1 < 3, ]))
-      } else {
-        nonLearners$mID[nonLearners$gameteSizeGene1 > 3] <- sample(nonLearners$ID[nonLearners$gameteSizeGene1 < 3], nrow(nonLearners[nonLearners$gameteSizeGene1 > 3, ]))
-
-      }
-      
-      #Update mate IDs
-      nonLearners$mID <- ifelse(is.na(nonLearners$mID) == 1, nonLearners$ID[match(nonLearners$ID, nonLearners$mID)], nonLearners$mID)
-      
-      #Re-merge agents
-      agents<-rbind(learners,nonLearners)
+      agents$mID <- ifelse(is.na(agents$mID) == 1, agents$ID[match(agents$ID, agents$mID)], agents$mID)
       
       #Remove agents who fail to pair
       agents <- agents[!is.na(agents$mID), ]
@@ -744,34 +580,19 @@ for (p in 1:populations) {
                                                                           x, -1])), 1))
       }
       
-      #Have agents reproduce in proportion to reward
-      offspring <- reproduce(agents, qInherit)
-      
-      #Save parent agents to overall data frame (to preserve action history)
-      data <- rbind(data,
-                    cbind(
-                      "modelLoop" = p,
-                      "generation" = g,
-                      "environmentChange" = e,
-                      agents[,1:23]
-                    ))
-      
-      #Overwrite parents with offspring
-      agents <- offspring[[1]]
-      q <- offspring[[2]]
-      qInherit <- offspring[[3]]
-      
     }
     
+    agents$environment<-e
+    
     #Create a unique filename and filepath
-    path <- "model-outputs/foraging/learning-evolution/MSAG Foraging LE Population "
+    path <- "model-outputs/foraging/learning-sex-diffs/MSAG Foraging SDL Population "
     
     format <- ".csv"
     date <- format(Sys.time(), format = "%Y%m%d %H%M")
-    file <- file.path(paste0(path, p, ifelse(e == min(environmentChange), " CHANGE LO ", " CHANGE HI "), date, format))
+    file <- file.path(paste0(path, p," ", date, format))
     
     #Save model data
-    write.csv(data, file = file, row.names = F)
+    write.csv(agents, file = file, row.names = F)
     
   }
   
