@@ -679,9 +679,6 @@ for(p in populations){
         
       }
       
-      print(g)
-      print(table(agents$socialLearningGene1))
-      
       #If at least one parent generation exists...
       if(g>1){
         
