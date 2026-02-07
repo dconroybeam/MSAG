@@ -1,0 +1,265 @@
+```{r packages}
+
+```
+
+
+
+```{r parameters}
+
+#Number of times to repeat entire model
+modelLoops<-100
+
+
+
+#Number of generations
+generations<-20
+
+
+
+#Population size
+popSize<-300
+
+
+
+
+#Lifespan
+#Number of opportunities viruses get to adapt to hosts
+lifeSpan<-10
+
+
+
+#Mutation rate
+mutationRate<-.05
+
+
+
+#Strength of selection
+selStrength<-c(.1,10)
+```
+
+
+
+```{r functions}
+
+#Agent Generation#
+#Generate the agents
+agentGenerate <- function(popSize) {
+  
+  #Generate a dataframe of agent variables
+  agents<-data.frame("ID"=1:popSize,
+                     "sexGene"=sample(0:1,popSize,replace=T))
+  
+  #Generate a dataframe of agent genes
+  agentGenes<-data.frame(cbind(agents$ID,matrix(sample(1:4,popSize*100,replace=T),popSize,100)))
+  
+  #Label columns
+  colnames(agentGenes)<-c("ID",paste0("gene",1:100))
+  
+  #Output agents and genes
+  return(list(agents,agentGenes))
+}
+
+
+
+#Virus Production#
+#A function to produce viruses
+virusGenerate <- function(popSize) {
+  
+  #Generate a dataframe of virus genes
+  viruses<-data.frame(cbind(1:popSize,matrix(sample(1:4,popSize*100,replace=T),popSize,100)))
+  
+  #Label bolumns
+  colnames(viruses)<-c("ID",paste0("gene",1:100))
+  
+  #Output the viruses
+  return(viruses)
+  
+}
+
+
+
+#A function to have viruses reproduce
+virusReproduce <- function(virus, host){
+  
+  #Produce random copies of the virus
+  viralCopies<-t(sapply(1:10,function(x)
+    ifelse(rbinom(length(virus[-1]),1,mutationRate),
+           sample(1:4,length(virus[-1]),replace=T),
+           as.numeric(virus[-1]))
+    ))
+  
+  #Choose the virus that is most similar to the host as the successor copy
+  successor<-viralCopies[which.max(apply(viralCopies,1,function(x)
+   mean(x==host[-1]))),]
+  
+  successor<-data.frame(c(virus[1],successor))
+  
+  colnames(successor)<-c("ID",paste0("gene",1:100))
+  
+  #Output the successor
+  return(successor)
+}
+
+
+#Reproduce#
+#Produce offspring
+reproduce <- function(agents,viruses,s) {
+  
+  #Extract agent genes and agents
+  agentGenes<-agents[[2]]
+  agents<-agents[[1]]
+  
+  #Calculate total match between virus and host genome
+  agents$infectionDegree<-rowSums(agentGenes[,-1] == viruses[,-1])
+
+  #Separate sexual and asexual agents
+  asexual<-agents[agents$sexGene==0,]
+  sexual<-agents[agents$sexGene==1,]
+  
+  #Randomize order of sexual agents
+  sexual<-sexual[sample(1:nrow(sexual)),]
+  
+  #Duplicate asexual agents--they essentially reproduce "sexually" with themselves
+  asexual<-cbind(asexual,asexual)
+  
+  #Randomly pair sexual agents
+  sexual<-cbind(sexual[1:(floor(nrow(sexual)/2)),],
+                sexual[(floor(nrow(sexual)/2)+1):(2*(floor(nrow(sexual)/2))),])
+  
+  #Bind asexual agents and sexual agent pairs back together
+  parents<-rbind(asexual,sexual)
+  
+  #Calculate total infection degree of parents
+  parents$reproProb<-parents[,3] + parents[,6]
+  
+  #Rescale to a 0-1 scale
+  parents$reproProb<-parents$reproProb-min(parents$reproProb)
+  parents$reproProb<-parents$reproProb/max(parents$reproProb)
+  
+  #Invert scale so that less infected agents are more likely to reproduce
+  parents$reproProb<-1-parents$reproProb
+  
+  #Rescale acording to selection strength
+  parents$reproProb<-exp(s*parents$reproProb)
+  
+  #Select parents to reproduce proportional to their infection status
+  parents<-parents[sample(1:nrow(parents),popSize,replace=T,prob=parents$repro),]
+  
+  #Remove unnecessary columns from offspring
+  offspring<-parents[,1:2]
+  
+  #Select offspring genes randomly from parent genes
+  offspringGenes<-data.frame(cbind(1:popSize,t(sapply(1:nrow(parents),function(x)
+    ifelse(rbinom(100,1,.5),
+           as.numeric(agentGenes[agentGenes$ID==parents[x,1],-1]),
+           as.numeric(agentGenes[agentGenes$ID==parents[x,4],-1])
+           )
+    )
+  )))
+  
+  #Relabel offspring genes
+  colnames(offspringGenes)<-c("ID",paste0("gene",1:100))
+  
+  #Relabel offspring IDs
+  offspring[,1]<-1:nrow(offspring)
+  
+  #Infect offspring with parent viruses
+  #For sexual agents, the offspring are infected with the closest parent virus to their genome
+  viruses<-data.frame(cbind(1:popSize,t(sapply(1:nrow(parents),function(x)
+    as.numeric(rbind(viruses[viruses$ID==parents[x,1],-1],
+          viruses[viruses$ID==parents[x,4],-1])[which.max(
+            c(mean(viruses[viruses$ID==parents[x,1],-1]==offspringGenes[x,-1]),
+              mean(viruses[viruses$ID==parents[x,4],-1]==offspringGenes[x,-1]))
+          ),]
+    )))))
+  
+  #Relabel
+  colnames(viruses)<-c("ID",paste0("gene",1:100))
+  
+  #Mutate
+  offspring$sexGene<-ifelse(rbinom(nrow(offspring),1,mutationRate),
+                            sample(0:1,nrow(offspring),replace=T),
+                            offspring$sexGene)
+  
+  offspringGenes[,-1]<-t(apply(offspringGenes[,-1],1,function(x)
+    ifelse(rbinom(length(x),1,mutationRate),
+           sample(1:4,length(x),replace=T),
+           x)
+    ))
+  
+  viruses[,-1]<-t(apply(viruses[,-1],1,function(x)
+    ifelse(rbinom(length(x),1,mutationRate),
+           sample(1:4,length(x),replace=T),
+           x)
+    ))
+
+  #Output agents, agent genes, and viruses
+  return(list(list(offspring,offspringGenes),viruses))
+  
+}
+
+```
+
+
+
+```{r modelStart}
+
+for(s in selStrength){
+  
+  #Loop through model loops
+  for (m in 1:modelLoops) {
+    
+    #Generate the agents
+    agents <- agentGenerate(popSize)
+    
+    #Generate viruses
+    viruses<-virusGenerate(popSize)
+    
+    #Create a dataframe to store agents
+    data<-cbind("modelLoop"=m,"generation"=0,"selStrength"=s,agents[[1]])
+    
+    #Loop through generations
+    for (g in 1:generations) {
+      
+      #Loop through "days" of agent lives
+      for (l in 1:lifeSpan) {
+        
+        #Loop through viruses
+        for (v in 1:nrow(viruses)) {
+          
+          #Have viruses reproduce within their host
+          viruses[v, ] <- virusReproduce(viruses[v, ], agents[[2]][v, ])
+        
+          }
+        
+      }
+      
+      #Have agents and viruses reproduce
+      newGeneration<-reproduce(agents,viruses,s)
+      
+      #Overwrite parents with offspring
+      agents<-newGeneration[[1]]
+      
+      #And save the new viruses
+      viruses<-newGeneration[[2]]
+      
+      #Save agents to overall data frame
+      data<-rbind(data,cbind("modelLoop"=m,"generation"=g,"selStrength"=s,agents[[1]]))
+      
+    }
+    
+    #Create a unique filename and filepath
+    path <- "model-outputs/sexrepro-evolution/MSAG Reproduction Evolution Population "
+    
+    format <- ".csv"
+    date <- format(Sys.time(), format = "%Y%m%d %H%M")
+    file <- file.path(paste0(path, m,ifelse(s == min(selStrength), " SEL LO ", " SEL HI "), date, format))
+    
+    #Save model data
+    write.csv(data, file = file, row.names = F)
+    
+  }
+  
+}
+
+```
