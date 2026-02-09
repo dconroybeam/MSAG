@@ -78,7 +78,7 @@ epsilonDecay<-1/lifeSpan
 
 #Environmental Change#
 #How likely ecological variables are to change each generation
-envChange<-c(5/generations,15/generations)
+envChange<-c(0,1)
 
 
 
@@ -682,9 +682,6 @@ for(p in populations){
     
     #Loop through generations
     for (g in 1:generations) {
-      
-      print(g)
-      print(table(agents$socializationGene1))
       
       #Randomly change the environment
       if(rbinom(1, 1, e)) {
