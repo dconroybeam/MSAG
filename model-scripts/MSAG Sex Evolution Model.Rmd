@@ -6,8 +6,9 @@
 
 ```{r parameters}
 
-#Number of times to repeat entire model
-modelLoops<-100
+#Populations#
+#The number of agent populations (determined by prior simulation)
+populations<-which(grepl("SEL HI",list.files("model-outputs/sexrepro-evolution/",full.names=T)))
 
 
 
@@ -32,7 +33,7 @@ maxGametes<-100
 
 
 #Population size
-popSize<-300
+popSize<-500
 
 
 
@@ -49,17 +50,28 @@ mutationRate<-.05
 #Agent Generation#
 #Generate the agents
 agentGenerate <- function(popSize) {
+  
+  #Load the agents
+  agents<-read.csv(list.files("model-outputs/sexrepro-evolution",full.names=T)[population])
+  
+  #Limit to just the final generation of agents
+  agents<-agents[agents$generation==max(agents$generation),]
+  
+  #Remove modelLoop and generation columns for now
+  agents<-agents[,-(1:3)]
+  
+  
   #Generate agents with
   #gameteSizeGene = size of gametes produced
   #fusionTargetGene = size of partners pursued for fusion
   #Each agent has two sets of genes (inherited from parents)
   #only the first gene will be expressed in gametes produced
-  agents <- data.frame(
+  agents <- cbind(agents,data.frame(
     "gameteSizeGene1" = rnorm(popSize, resourceThreshold / 2, 2),
     "fusionTargetGene1" = rnorm(popSize, resourceThreshold / 2, 2),
     "gameteSizeGene2" = rnorm(popSize, resourceThreshold / 2, 2),
     "fusionTargetGene2" = rnorm(popSize, resourceThreshold / 2, 2)
-  )
+  ))
   
   #Keep agent traits within bounds
   agents <- data.frame(apply(agents, 2, function(x)
@@ -67,6 +79,7 @@ agentGenerate <- function(popSize) {
       x > resources, resources, ifelse(x < (resources / maxGametes), (resources /
                                                                         maxGametes), x)
     )))
+  
   #Output agents
   return(agents)
 }
@@ -218,7 +231,7 @@ for (m in 1:modelLoops) {
       
       as.matrix(t(
         sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
-          gameteProduce(agents[x, ]))
+          gameteProduce(agents[x, -(1:2)]))
         
       )))
 

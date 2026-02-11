@@ -78,7 +78,7 @@ epsilonDecay<-1/lifeSpan
 
 #Environmental Change#
 #How likely ecological variables are to change each generation
-envChange<-c(.25,.75)
+envChange<-c(.25,.5)
 
 
 
@@ -543,7 +543,7 @@ rewardUpdate<-function(agents,q,parentQs,hhStates,actionResults,foragingVariable
 #Reproduce#
 #Produce offspring from parents
 reproduce <- function(agents) {
-  
+
   #Calculate total reward achieved by household
   hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))
   
@@ -584,14 +584,14 @@ reproduce <- function(agents) {
     if(expressedParent==1){
       child<-cbind(parent1$ID,
                    if(expressedGenes[1]==1 | ((parent1$gameteSizeGene1 > 3) == 
-                                           (parent1$gameteSizeGene2>3))){cbind(parent1$ID,parent1$policingGene1)} else {cbind(parent2$ID,parent1$policingGene1)},
+                                           (parent1$gameteSizeGene2>3))){cbind(parent1$ID,parent1$policingGene1)} else {cbind(parent2$ID,parent2$policingGene1)},
                    if(expressedGenes[1]==1){parent1[,c(4:13)]} else{parent1[,c(14:23)]},
                    if(expressedGenes[2]==1){parent2[,c(4:13)]} else{parent2[,c(14:23)]},
                    parent1[,24:29])
     } else {
       child<-cbind(parent2$ID,
                    if(expressedGenes[1]==1 | ((parent2$gameteSizeGene1 > 3) == 
-                                           (parent2$gameteSizeGene2>3))){cbind(parent2$ID,parent2$policingGene1)} else {cbind(parent1$ID,parent2$policingGene1)},
+                                           (parent2$gameteSizeGene2>3))){cbind(parent2$ID,parent2$policingGene1)} else {cbind(parent1$ID,parent1$policingGene1)},
                    if(expressedGenes[1]==1){parent2[,c(4:13)]} else{parent2[,c(14:23)]},
                    if(expressedGenes[2]==1){parent1[,c(4:13)]} else{parent1[,c(14:23)]},
                    parent2[,24:29])
@@ -603,15 +603,6 @@ reproduce <- function(agents) {
     #Add the child to the offspring dataframe
     offspring<-rbind(offspring,child)
   }
-  
-  #Add mutation to relevant genes
-  offspring$socialLearningGene1<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  sample(0:2,nrow(offspring),replace=T),
-                                  offspring$socialLearningGene1)
-  
-  offspring$socialLearningGene2<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  sample(0:2,nrow(offspring),replace=T),
-                                  offspring$socialLearningGene2)
   
   offspring$policingGene1<-rnorm(nrow(offspring),offspring$policingGene1,mutationRate)
   offspring$policingGene2<-rnorm(nrow(offspring),offspring$policingGene2,mutationRate)
@@ -694,10 +685,6 @@ for(p in populations){
     #Loop through generations
     for (g in 1:generations) {
       
-      print(g)
-      print(mean(agents$policingGene1))
-      print(table(agents$socialLearningGene1))
-      
       #Randomly change the environment
       if(rbinom(1, 1, e)) {
         #Set up the new environment
@@ -714,38 +701,28 @@ for(p in populations){
       #If at least one parent generation exists...
       if(g>1){
         
-        #Offspring agents learn folk theories of policy from observing adults
+         #Offspring agents learn folk theories of policy from observing adults
         #They do so either with or without a theory that sex matters
         theories <- lapply(1:2, function(x)
           #Agents with no gender concept simply learn from all adults
           lapply(1:nrow(agents), function(y)
-            if (agents$socialLearningGene1[y] < 2) {
+            #Agents separately learn from large- and small-gamete producers
+            if(x==1){
               socialLearn(theories[[x]][[y]],
-                          observations[sample(1:nrow(observations),
-                                              numObservations),])
+                          observations[sample(which((observations$gameteSize < 3)),
+                                              numObservations/2) , ])
             } else {
-              #Agents with a gender concept separately learn from large- and small-gamete producers
-              if(x==1){
-                socialLearn(theories[[x]][[y]],
-                            observations[sample(which((observations$gameteSize < 3)),
-                                                numObservations/2) , ])
-              } else {
-                socialLearn(theories[[x]][[y]],
-                            observations[sample(which((observations$gameteSize > 3)),
-                                                numObservations/2), ])
-              }
-  
-            }))
-  
+              socialLearn(theories[[x]][[y]],
+                          observations[sample(which((observations$gameteSize > 3)),
+                                              numObservations/2), ])
+            }
+            
+          ))
+        
         #Replace initial value function with folk theory for agents that do social learning
         q <- lapply(1:length(q), function(x)
-        if (agents$socialLearningGene1[x] == 1) {
-          theories[[1]][[x]]
-        } else if (agents$socialLearningGene1[x]==2) {
-          theories[[ifelse(agents$gameteSizeGene1[x]<3,1,2)]][[x]]
-          } else {
-          q[[x]]
-        })
+            theories[[ifelse(agents$gameteSizeGene1[x]<3,1,2)]][[x]]
+          )
         
         #Relabel action-value functions
         names(q)<-agents$ID
