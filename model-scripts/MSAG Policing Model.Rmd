@@ -833,7 +833,7 @@ for(p in populations){
     }
     
     #Create a unique filename and filepath
-    path <- "model-outputs/gender-evolution/MSAG policing Evolution Population "
+    path <- "model-outputs/gender-policing/MSAG policing Evolution Population "
     
     format <- ".csv"
     date <- format(Sys.time(), format = "%Y%m%d %H%M")
