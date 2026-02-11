@@ -543,6 +543,9 @@ rewardUpdate<-function(agents,q,parentQs,hhStates,actionResults,foragingVariable
 #Reproduce#
 #Produce offspring from parents
 reproduce <- function(agents) {
+  
+  #Probabilistically decrease fitness for agents that police offspring policies
+  agents$reward<-ifelse(rbinom(nrow(agents),1,agents$policingGene1),agents$reward*.95,agents$reward)
 
   #Calculate total reward achieved by household
   hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))
