@@ -1,5 +1,5 @@
 ```{r packages}
-
+library(doParallel)
 ```
 
 
@@ -34,7 +34,7 @@ mutationRate<-.05
 
 
 #Strength of selection
-selStrength<-c(.1,10)
+selStrength<-c(10,.1)
 ```
 
 
@@ -116,16 +116,21 @@ reproduce <- function(agents,viruses,s) {
   asexual<-agents[agents$sexGene==0,]
   sexual<-agents[agents$sexGene==1,]
   
-  #Randomize order of sexual agents
+  if(nrow(sexual)>1){
+      #Randomize order of sexual agents
   sexual<-sexual[sample(1:nrow(sexual)),]
   
-  #Duplicate asexual agents--they essentially reproduce "sexually" with themselves
-  asexual<-cbind(asexual,asexual)
-  
-  #Randomly pair sexual agents
+    #Randomly pair sexual agents
   sexual<-cbind(sexual[1:(floor(nrow(sexual)/2)),],
                 sexual[(floor(nrow(sexual)/2)+1):(2*(floor(nrow(sexual)/2))),])
+  }
   
+
+  if(nrow(asexual)>0){
+      #Duplicate asexual agents--they essentially reproduce "sexually" with themselves
+      asexual<-cbind(asexual,asexual)
+  }
+
   #Bind asexual agents and sexual agent pairs back together
   parents<-rbind(asexual,sexual)
   
@@ -204,11 +209,17 @@ reproduce <- function(agents,viruses,s) {
 
 ```{r modelStart}
 
-for(s in selStrength){
-  
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(detectCores()-4)
+registerDoParallel(clust)
+
   #Loop through model loops
-  for (m in 1:modelLoops) {
+  foreach(m=1:modelLoops) %dopar% {
+
     
+    for(s in selStrength){
+  
     #Generate the agents
     agents <- agentGenerate(popSize)
     
@@ -262,4 +273,5 @@ for(s in selStrength){
   
 }
 
+  stopCluster(clust)
 ```
