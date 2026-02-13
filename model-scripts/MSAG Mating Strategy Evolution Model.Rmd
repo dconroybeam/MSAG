@@ -1,5 +1,5 @@
 ```{r packages}
-
+library(doParallel)
 ```
 
 
@@ -252,8 +252,13 @@ reproduce <- function(agents, mateChoices, selectionPI) {
 
 ```{r modelStart}
 
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(detectCores()-4)
+registerDoParallel(clust)
+
 #Loop through model loops
-for (p in 1:populations) {
+foreach(p = 1:populations) %dopar% {
   
   #Loop through strength of selection on parental investment
   for (s in selectionPI) {
@@ -393,6 +398,6 @@ for (p in 1:populations) {
   }
 }
   
-  
+stopCluster(clust)
 
 ```

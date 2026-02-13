@@ -1,5 +1,5 @@
 ```{r packages}
-
+library(doParallel)
 ```
 
 
@@ -42,7 +42,7 @@ mutationRate<-.05
 
 
 
-#Proportion of males who will survive to reproductive maturity
+#Proportion of breeding population that belongs to the scarcer sex
 sexRatio<-.15
 
 ```
@@ -254,8 +254,13 @@ fusion <- function(gametes) {
 
 ```{r modelStart}
 
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(detectCores()-4)
+registerDoParallel(clust)
+
 #Loop through model loops
-for (p in 1:populations) {
+foreach(p = 69) %dopar% {
   
   #Load in the agent population
   agents <- agentGenerate(p)
@@ -366,5 +371,7 @@ for (p in 1:populations) {
   #Save model data
   write.csv(data, file = file, row.names = F)
 }
+
+stopCluster(clust)
 
 ```
