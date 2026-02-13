@@ -70,7 +70,6 @@ epsilonDecay<-1/(250)
 
 ```{r functions}
 
-
 #Agent Generation#
 #Generate the agents
 agentGenerate <- function(population, actions, states) {
@@ -173,17 +172,17 @@ actionSelection<-function(agents,q, qInherit){
   chosenActions <- sapply(1:nrow(agents), function(x)
     
     if (agents$learningGene1[x] == 1) {
-      #On 95% of trials...
+      #On Epsilon% of trials...
       if (rbinom(1, 1, rbinom(1, 1, max(c(.05, epsilon - epsilonDecay * l))))) {
-        #On some % of trials, pick a random action
+        #Pick a random action
         sample(actions, 1)
       } else{
-        #Pick which ever action has maximum action value (ties broken randomly)
+        #Otherwise, pick which ever action has maximum action value (ties broken randomly)
         actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
       }
     } else {
-      #Pick which ever action has maximum action value (ties broken randomly)
+      #Pick action probabilistically proportional to inherited action value
       actions[sample(1:length(actions), 1, prob = qInherit[[as.character(agents$ID[x])]][[1]][[agents$hhState[x]]][, agents$state[x]])]
     }
   )
@@ -327,6 +326,46 @@ matrixSetup<-function(action, states, foragingVariables){
 
 
 
+#Environment Setup#
+#A function to set up random environments
+environmentSetup<-function(environment){
+  
+  #Create a dataframe reflecting the nature of foragable goods in this environment
+  foragingVariables<-data.frame("foodItem"=actions[-1],
+                                "productivity"=0,
+                                "practice"=0,
+                                "risk"=0,
+                                "danger"=0,
+                                "childCompat"=0)
+  
+  #Generate an environment in which optimal foraging policy is either sex-differentiated or not
+  if (environment==1) {
+    foragingVariables$productivity <- c(1, 0, 1, 0)
+    foragingVariables$practice <- c(1, 0, 0, 0)
+    foragingVariables$risk <- c(1, 1, 0, 0)
+    foragingVariables$danger <- c(1, 0, 0, 0)
+    foragingVariables$childCompat <- c(0, 0, 1, 1)
+  } else {
+    foragingVariables$productivity <- c(1, 0, 1, 0)
+    foragingVariables$practice <- c(0, 0, 0, 0)
+    foragingVariables$risk <- c(0, 1, 0, 1)
+    foragingVariables$danger <- c(0, 1, 0, 1)
+    foragingVariables$childCompat <- c(1, 1, 1, 1)
+  }
+ 
+  #Generate transition matrices for this environment
+  tMatrices <- lapply(actions, function(x)
+    matrixSetup(x, states, foragingVariables))
+  
+  #Label appropriately
+  names(tMatrices) <- actions
+  
+  return(list(foragingVariables,tMatrices))
+  
+}
+
+
+
 #A function for executing transitions through the MDP given agents' actions
 transitions<-function(agents,chosenActions,tMatrices){
   
@@ -404,7 +443,7 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
                                     c("meat1","meat2"),2,3))
     
     #Calculate the reward this action should generate
-    #Actions that generate the reward the household has the most of already results in 0 reward
+    #Actions that generate any resource other than the one the household has the least of  results in decreased reward
     agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
                         actionResults$yield[match(agents$ID[a],actionResults$agentID)],
                         actionResults$yield[match(agents$ID[a],actionResults$agentID)]*.25)
@@ -445,44 +484,11 @@ for (p in 1:populations) {
     
     ###Environment Setup###
     
-    #Create the set of possible states agents can be in
-    states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
+    #Set up environment
+    env<-environmentSetup(e)
     
-    #Create the set of possible actions agents can take
-    actions<-c("parent","meat1","meat2","plant1","plant2")
-    
-    #Create a dataframe reflecting the nature of foragable goods in this environment
-    foragingVariables<-data.frame("foodItem"=actions[-1],
-                                  "productivity"=0,
-                                  "practice"=0,
-                                  "risk"=0,
-                                  "danger"=0,
-                                  "childCompat"=0)
-    
-    if (e == 1) {
-      #Set initial features for foraging actions
-      foragingVariables$productivity <- c(1,0,1,0)
-      foragingVariables$practice <- c(1, 0, 0, 0)
-      foragingVariables$risk <- c(1,1,0,0)
-      foragingVariables$danger <- c(1, 0, 0, 0)
-      foragingVariables$childCompat <- c(0,0,1,1)
-    } else {
-      #Set initial features for foraging actions
-      foragingVariables$productivity <- c(1,0,1,0)
-      foragingVariables$practice <- c(0, 0, 0, 0)
-      foragingVariables$risk <- c(0,1,0,1)
-      foragingVariables$danger <- c(0, 1, 0, 1)
-      foragingVariables$childCompat <- c(1,1,1,1)
-    }
-    
-    
-    #Generate transition matrices for this environment
-    tMatrices<-lapply(actions,function(x)
-      matrixSetup(x,states,foragingVariables)
-      )
-    
-    #Label appropriately
-    names(tMatrices)<-actions
+    foragingVariables<-env[[1]]
+    tMatrices<-env[[2]]
     
     
     
@@ -538,12 +544,12 @@ for (p in 1:populations) {
       agents$hh <- pmin(agents$ID, agents$mID)
       
       #Create a variable to store current status of household resources
-      #Starts with parenting set at 1 for simplicity
+      #Starts with all but parenting set at 1 for simplicity
       hhStates <- data.frame(
         "hh" = unique(agents$hh),
-        "parenting" = 1,
-        "nutrientM" = 0,
-        "nutrientP" = 0
+        "parenting" = 0,
+        "nutrientM" = 1,
+        "nutrientP" = 1
       )
       
       #Give all agents a random starting state
