@@ -1,5 +1,5 @@
 ```{r packages}
-
+library(doParallel)
 ```
 
 
@@ -49,13 +49,16 @@ mutationRate<-.05
 
 #Agent Generation#
 #Generate the agents
-agentGenerate <- function(popSize) {
+agentGenerate <- function(population) {
   
   #Load the agents
   agents<-read.csv(list.files("model-outputs/sexrepro-evolution",full.names=T)[population])
   
   #Limit to just the final generation of agents
   agents<-agents[agents$generation==max(agents$generation),]
+  
+  #Limit to sexually reproducing agents
+  agents<-agents[agents$sexGene==1,]
   
   #Remove modelLoop and generation columns for now
   agents<-agents[,-(1:3)]
@@ -67,10 +70,10 @@ agentGenerate <- function(popSize) {
   #Each agent has two sets of genes (inherited from parents)
   #only the first gene will be expressed in gametes produced
   agents <- cbind(agents,data.frame(
-    "gameteSizeGene1" = rnorm(popSize, resourceThreshold / 2, 2),
-    "fusionTargetGene1" = rnorm(popSize, resourceThreshold / 2, 2),
-    "gameteSizeGene2" = rnorm(popSize, resourceThreshold / 2, 2),
-    "fusionTargetGene2" = rnorm(popSize, resourceThreshold / 2, 2)
+    "gameteSizeGene1" = rnorm(nrow(agents), resourceThreshold / 2, 2),
+    "fusionTargetGene1" = rnorm(nrow(agents), resourceThreshold / 2, 2),
+    "gameteSizeGene2" = rnorm(nrow(agents), resourceThreshold / 2, 2),
+    "fusionTargetGene2" = rnorm(nrow(agents), resourceThreshold / 2, 2)
   ))
   
   #Keep agent traits within bounds
@@ -216,13 +219,21 @@ fusion <- function(gametes) {
 
 ```{r modelStart}
 
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(detectCores()-4)
+registerDoParallel(clust)
+
 #Loop through model loops
-for (m in 1:modelLoops) {
+foreach(p = populations) %dopar% {
   #Generate the agents
-  agents <- agentGenerate(popSize)
+  agents <- agentGenerate(p)
+  
+  #Remove ID and sex gene columns as I won't actually be using them
+  agents<-agents[,-(1:2)]
   
   #Create a dataframe to store agents
-  data<-cbind("modelLoop"=m,"generation"=0,agents)
+  data<-cbind("modelLoop"=p,"generation"=0,agents)
   
   #Loop through generations
   for (g in 1:generations) {
@@ -231,7 +242,7 @@ for (m in 1:modelLoops) {
       
       as.matrix(t(
         sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
-          gameteProduce(agents[x, -(1:2)]))
+          gameteProduce(agents[x, ]))
         
       )))
 
@@ -242,7 +253,7 @@ for (m in 1:modelLoops) {
     agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring),popSize))), ]
     
     #Save agents to overall data frame
-    data<-rbind(data,cbind("modelLoop"=m,"generation"=g,agents))
+    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,agents))
     
   }
   
@@ -251,10 +262,12 @@ for (m in 1:modelLoops) {
   
   format <- ".csv"
   date <- format(Sys.time(), format = "%Y%m%d %H%M")
-  file <- file.path(paste0(path, m, " ", date, format))
+  file <- file.path(paste0(path, p, " ", date, format))
   
   #Save model data
   write.csv(data, file = file, row.names = F)
 }
+
+stopCluster(clust)
 
 ```
