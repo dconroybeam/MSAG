@@ -8,7 +8,7 @@
 
 #Populations#
 #The number of agent populations (determined by prior simulation)
-populations<-1
+populations<-which(grepl("PI HI",list.files("model-outputs/mating-strategy/",full.names=T)))[1]
 
 
 
@@ -478,7 +478,7 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
 ```{r modelStart}
 
 #Loop through model loops
-for (p in 1:populations) {
+for (p in populations) {
   
   for (e in environments) {
     

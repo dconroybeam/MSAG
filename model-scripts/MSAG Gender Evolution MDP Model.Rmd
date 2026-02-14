@@ -689,9 +689,6 @@ for (m in 0:(modelLoops-1)) {
     #Loop through generations
     for (g in 1:generations) {
       
-      print(paste0("generation: ",g))
-      print(table(unlist(sapply(agents,function(x) x$socialLearningGene1))))
-      
       #Randomly change environments
       if (rbinom(1, 1, e)) {
         
@@ -872,7 +869,7 @@ for (m in 0:(modelLoops-1)) {
       
       #Create a vector to determine which environment agents will be born into
       newEnv<-lapply(1:numEnv,function(v)
-        ifelse(rbinom(nrow(offspring[[v]][[1]]),1,1-e),
+        ifelse(rbinom(nrow(offspring[[v]][[1]]),1,1-environmentPredict),
                                           sample((1:numEnv)[-v],
                                                  nrow(offspring[[v]][[1]]),
                                                  replace=T),
