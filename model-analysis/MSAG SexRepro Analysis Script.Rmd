@@ -1,0 +1,55 @@
+```{r packages}
+
+library(ggplot2)
+
+```
+
+
+
+```{r loadData}
+
+#Load all model outputs
+data<-lapply(list.files("model-outputs/sexrepro-evolution",full.names=T)[which(grepl("MSAG",list.files("model-outputs/sexrepro-evolution",full.names=T)))],read.csv)
+
+data<-do.call("rbind",data)
+
+```
+
+
+
+```{r analysis}
+
+#Create a dataframe for plotting average sexual reproduction genes over time
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$selStrength))))
+plotData$selStrength<-rep(sort(unique(data$selStrength)),each=length(unique(data$generation)))
+plotData$mean<-c(tapply(data$sexGene,list(data$generation,data$selStrength),mean))
+plotData$lci<-c(tapply(data$sexGene,list(data$generation,data$selStrength),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$uci<-c(tapply(data$sexGene,list(data$generation,data$selStrength),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+
+```
+
+
+
+```{r plot}
+
+p1<-ggplot(data=plotData,
+           aes(x=generation,y=mean,color=as.factor(selStrength)))+
+  geom_errorbar(aes(ymin=lci,ymax=uci))+
+  labs(x="Generation",y="Proportion Sexually Reproducing",color="Selection Against\nInfection")+
+  scale_color_manual(values=c("darkred","darkblue"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
+
+```
+
+
+
+```{r save}
+
+ggsave("figures/MSAG SexRepro Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+
+```
+
