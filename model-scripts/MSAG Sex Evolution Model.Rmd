@@ -28,7 +28,7 @@ resources<-resourceThreshold*20
 
 
 #Maximum number of gametes an agent will be allowed to produce
-maxGametes<-100
+maxGametes<-200
 
 
 
@@ -70,18 +70,12 @@ agentGenerate <- function(population) {
   #Each agent has two sets of genes (inherited from parents)
   #only the first gene will be expressed in gametes produced
   agents <- cbind(agents,data.frame(
-    "gameteSizeGene1" = rnorm(nrow(agents), resourceThreshold / 2, 2),
-    "fusionTargetGene1" = rnorm(nrow(agents), resourceThreshold / 2, 2),
-    "gameteSizeGene2" = rnorm(nrow(agents), resourceThreshold / 2, 2),
-    "fusionTargetGene2" = rnorm(nrow(agents), resourceThreshold / 2, 2)
+    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), resources),
+    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), resources),
+    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), resources),
+    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), resources)
   ))
   
-  #Keep agent traits within bounds
-  agents <- data.frame(apply(agents, 2, function(x)
-    ifelse(
-      x > resources, resources, ifelse(x < (resources / maxGametes), (resources /
-                                                                        maxGametes), x)
-    )))
   
   #Output agents
   return(agents)
@@ -155,8 +149,8 @@ reproduce <- function(focalGamete, targetGamete) {
     
     #Keep offspring traits within bounds
     offspring <- apply(offspring, 2, function(x)
-      ifelse(x > resources, resources, ifelse(
-        x < (resources / maxGametes), (resources / maxGametes), x
+      ifelse(x > resources, resources + (resources-x), ifelse(
+        x < (resources / maxGametes), (resources / maxGametes) + ((resources / maxGametes)-x), x
       )))
     
     #Output offspring
