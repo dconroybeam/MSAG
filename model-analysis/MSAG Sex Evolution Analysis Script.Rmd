@@ -24,23 +24,8 @@ data$bigOrSmall<-ifelse(data$gameteSizeGene1>median(data$gameteSizeGene1),"big",
 
 ```{r analysis}
 
-plotData<-data[data$generation %in% seq(0,100,50) & data$modelLoop %in% sample(data$modelLoop,10),]
+plotData<-data[data$generation %in% seq(0,50,25), ]
 
-
-
-# #Create a dataframe for plotting average gamete size and fusion target over time
-# plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$bigOrSmall))))
-# plotData$bigOrSmall<-rep(sort(unique(data$bigOrSmall)),each=length(unique(data$generation)))
-# plotData$sizeMean<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),mean))
-# plotData$targetMean<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),mean))
-# 
-# #Compute CIs on gamete sizes
-# plotData$sizelci<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# plotData$sizeuci<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# 
-# #Compute CIs on fusion target
-# plotData$targetlci<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# plotData$targetuci<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
 
 ```
 

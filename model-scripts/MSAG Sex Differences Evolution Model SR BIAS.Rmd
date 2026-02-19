@@ -27,7 +27,7 @@ resources<-resourceThreshold*20
 
 
 #Maximum number of gametes an agent will be allowed to produce
-maxGametes<-100
+maxGametes<-200
 
 
 
@@ -43,7 +43,7 @@ mutationRate<-.05
 
 
 #Proportion of breeding population that belongs to the scarcer sex
-sexRatio<-.15
+sexRatio<-.2
 
 ```
 
@@ -260,7 +260,7 @@ clust<-makeCluster(detectCores()-4)
 registerDoParallel(clust)
 
 #Loop through model loops
-foreach(p = 69) %dopar% {
+foreach(p = 1:populations) %dopar% {
   
   #Load in the agent population
   agents <- agentGenerate(p)
