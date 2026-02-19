@@ -13,7 +13,7 @@ populations<-which(grepl("SEL HI",list.files("model-outputs/sexrepro-evolution/"
 
 
 #Number of generations
-generations<-100
+generations<-50
 
 
 
@@ -33,12 +33,12 @@ maxGametes<-200
 
 
 #Population size
-popSize<-500
+popSize<-200
 
 
 
 #Mutation rate
-mutationRate<-.05
+mutationRate<-.1
 
 ```
 
@@ -70,10 +70,10 @@ agentGenerate <- function(population) {
   #Each agent has two sets of genes (inherited from parents)
   #only the first gene will be expressed in gametes produced
   agents <- cbind(agents,data.frame(
-    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), resources),
-    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), resources),
-    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), resources),
-    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), resources)
+    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold)
   ))
   
   
@@ -149,7 +149,7 @@ reproduce <- function(focalGamete, targetGamete) {
     
     #Keep offspring traits within bounds
     offspring <- apply(offspring, 2, function(x)
-      ifelse(x > resources, resources + (resources-x), ifelse(
+      ifelse(x > resourceThreshold, resourceThreshold + (resourceThreshold-x), ifelse(
         x < (resources / maxGametes), (resources / maxGametes) + ((resources / maxGametes)-x), x
       )))
     
