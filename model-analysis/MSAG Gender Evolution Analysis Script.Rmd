@@ -1,0 +1,62 @@
+```{r packages}
+
+library(ggplot2)
+
+```
+
+
+
+```{r loadData}
+
+#Load all model outputs
+data<-lapply(list.files("model-outputs/gender-evolution",full.names=T),read.csv)
+
+#Rbind all CSVs together into one dataframe
+data<-do.call("rbind",data)
+
+```
+
+
+
+```{r analysis}
+
+
+#Create a dataframe for plotting average gamete size and fusion target over time
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$environmentChange))))
+plotData$change<-rep(sort(unique(data$environmentChange)),each=length(unique(data$generation)))
+plotData$mean<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),mean))
+
+#Compute CIs on gamete sizes
+plotData$lci<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$uci<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+
+
+```
+
+
+
+```{r plot}
+
+
+p1<-ggplot(data=plotData,
+           aes(x=generation,y=mean,color=as.factor(change)))+
+  geom_errorbar(aes(ymin=lci,ymax=uci))+
+  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment Change")+
+  scale_color_manual(values=c("dodgerblue3","firebrick3"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
+
+
+```
+
+
+
+```{r save}
+
+ggsave("figures/MSAG Gender Evolution Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+
+```
+
