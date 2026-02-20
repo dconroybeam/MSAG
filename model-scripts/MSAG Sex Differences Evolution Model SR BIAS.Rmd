@@ -43,7 +43,7 @@ mutationRate<-.05
 
 
 #Proportion of breeding population that belongs to the scarcer sex
-sexRatio<-.2
+sexRatio<-.05
 
 ```
 
@@ -126,7 +126,7 @@ reproduce <- function(focalGamete, targetGamete) {
   #And if their gametes are sufficiently different in size (required to prevent "females" from pairing with one another when "males" are scarce)
   if ((focalGamete$gameteSizeExpressed + 
        targetGamete$gameteSizeExpressed) >= resourceThreshold &
-      (focalGamete$gameteSizeExpressed - 
+      abs(focalGamete$gameteSizeExpressed - 
        targetGamete$gameteSizeExpressed) >= 1.5
       ) {
     #Generate the offspring from gametes
@@ -274,6 +274,9 @@ foreach(p = 1:populations) %dopar% {
   #Loop through generations
   for (g in 1:generations) {
     
+    print(g)
+    plot(investCompetitionGene1~gameteSizeGene1,data=agents)
+    
     #Create a blank offspring dataframe
     offspring <- data.frame(
       'parent1ID' = NA,
@@ -308,16 +311,11 @@ foreach(p = 1:populations) %dopar% {
         1 - (breedingPopulation$investCompetitionGene1 * investCompetitionCost)
       ) == 1), ]
       
-      
-      #Reduce agent resources according to investment in parenting
-      #breedingPopulation have their gamete budget reduced to the extent that they invested in parenting
-      agentResources <- resources * (1 - (breedingPopulation$investParentingGene1))
-      
       #Generate gametes for each agent
       gametes <- sapply(1:nrow(breedingPopulation), function(x)
         
         as.matrix(t(
-          sapply(1:floor(agentResources[x] / breedingPopulation$gameteSizeGene1[x]), function(y)
+          sapply(1:floor(resources / breedingPopulation$gameteSizeGene1[x]), function(y)
             gameteProduce(breedingPopulation[x, ]))
           
         )))
@@ -329,17 +327,7 @@ foreach(p = 1:populations) %dopar% {
     #Remove the row of NAs
     offspring<-offspring[-1,]
     
-    
-    #Post-reproductive mortality
-    #Agents increase the likelihood of their offspring surviving to the extent that they invest in parenting
-    #This parenting is divided evenly among all of an agent's offspring
-    postReproMortalityRisk<-agents$investParentingGene1[match(offspring$parent1ID,agents$ID)]/
-      sapply(offspring$parent1ID,function(x) sum(c(offspring$parent1ID==x,offspring$parent2ID==x)))+
-      agents$investParentingGene1[match(offspring$parent2ID,agents$ID)]/
-      sapply(offspring$parent2ID,function(x) sum(c(offspring$parent1ID==x,offspring$parent2ID==x)))
-    
-    #Sort offspring by parents' investment in parenting
-    offspring<-offspring[order(postReproMortalityRisk,decreasing=T),]
+    offspring<-offspring[sample(1:nrow(offspring)),]
     
     #Select the top popSize agents by parental investment to survive
     offspring<-offspring[1:min(c(nrow(offspring),popSize)),]
