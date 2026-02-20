@@ -332,6 +332,10 @@ foreach(p = 1:populations) %dopar% {
     #Select the top popSize agents by parental investment to survive
     offspring<-offspring[1:min(c(nrow(offspring),popSize)),]
     
+    if(nrow(offspring)<popSize){
+      offspring<-offspring[sample(1:nrow(offspring),popSize,replace=T),]
+    }
+    
     #Overwrite parents with offspring
     agents<-offspring[sample(1:nrow(offspring)),]
     
