@@ -12,7 +12,7 @@ populations<-length(list.files("model-outputs/sex-evolution/",full.names=T))
 
 
 #Number of generations
-generations<-100
+generations<-50
 
 
 
@@ -27,7 +27,7 @@ resources<-resourceThreshold*20
 
 
 #Maximum number of gametes an agent will be allowed to produce
-maxGametes<-100
+maxGametes<-200
 
 
 

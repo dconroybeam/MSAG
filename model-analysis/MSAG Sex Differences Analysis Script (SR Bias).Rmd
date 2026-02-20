@@ -1,0 +1,78 @@
+```{r packages}
+
+library(ggplot2)
+
+```
+
+
+
+```{r loadData}
+
+#Load all model outputs
+data<-lapply(list.files("model-outputs/sex-diffs-evolution-sr",full.names=T),read.csv)
+
+#Rbind all CSVs together into one dataframe
+data<-do.call("rbind",data)
+
+data$bigOrSmall<-ifelse(data$gameteSizeGene1>3,"Large Gametes","Small Gametes")
+
+```
+
+
+
+```{r analysis}
+
+
+#Create a dataframe for plotting average gamete size and fusion target over time
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$bigOrSmall))))
+plotData$bigOrSmall<-rep(sort(unique(data$bigOrSmall)),each=length(unique(data$generation)))
+plotData$competitionMean<-c(tapply(data$investCompetitionGene1,list(data$generation,data$bigOrSmall),mean))
+plotData$parentingMean<-c(tapply(data$investParentingGene1,list(data$generation,data$bigOrSmall),mean))
+
+#Compute CIs on gamete sizes
+plotData$competitionlci<-c(tapply(data$investCompetitionGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$competitionuci<-c(tapply(data$investCompetitionGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+
+#Compute CIs on fusion target
+plotData$parentinglci<-c(tapply(data$investParentingGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$parentinguci<-c(tapply(data$investParentingGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+
+```
+
+
+
+```{r plot}
+
+
+p1<-ggplot(data=plotData,
+           aes(x=generation,y=competitionMean,color=as.factor(bigOrSmall)))+
+  geom_errorbar(aes(ymin=competitionlci,ymax=competitionuci))+
+  labs(x="Generation",y="Investment in Competition",color="Gamete Size")+
+  scale_color_manual(values=c("orangered","steelblue"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
+
+p2<-ggplot(data=plotData,
+           aes(x=generation,y=parentingMean,color=as.factor(bigOrSmall)))+
+  geom_errorbar(aes(ymin=parentinglci,ymax=parentinguci))+
+  labs(x="Generation",y="Investment in Parenting",color="Gamete Size")+
+  scale_color_manual(values=c("orangered","steelblue"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
+```
+
+
+
+```{r save}
+
+ggsave("figures/MSAG Competition Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+
+ggsave("figures/MSAG Parenting Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+```
+

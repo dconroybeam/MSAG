@@ -24,23 +24,8 @@ data$bigOrSmall<-ifelse(data$gameteSizeGene1>median(data$gameteSizeGene1),"big",
 
 ```{r analysis}
 
-plotData<-data[data$generation %in% seq(0,100,50) & data$modelLoop %in% sample(data$modelLoop,10),]
+plotData<-data[data$generation %in% seq(0,50,25), ]
 
-
-
-# #Create a dataframe for plotting average gamete size and fusion target over time
-# plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$bigOrSmall))))
-# plotData$bigOrSmall<-rep(sort(unique(data$bigOrSmall)),each=length(unique(data$generation)))
-# plotData$sizeMean<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),mean))
-# plotData$targetMean<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),mean))
-# 
-# #Compute CIs on gamete sizes
-# plotData$sizelci<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# plotData$sizeuci<-c(tapply(data$gameteSizeGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# 
-# #Compute CIs on fusion target
-# plotData$targetlci<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-# plotData$targetuci<-c(tapply(data$fusionTargetGene1,list(data$generation,data$bigOrSmall),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
 
 ```
 
@@ -48,7 +33,7 @@ plotData<-data[data$generation %in% seq(0,100,50) & data$modelLoop %in% sample(d
 
 ```{r plot}
 
-
+#Generate a "petri-dish" style figure of the agent populations
 p1<-ggplot(data=plotData,
        aes(x=gameteSizeGene1,
            y=runif(nrow(plotData),0,1),
@@ -56,13 +41,23 @@ p1<-ggplot(data=plotData,
            size=gameteSizeGene1))+
   geom_point(pch=21,color=I("black"))+
   theme(legend.position="none")+
-  facet_wrap(~generation,nrow=1,scales="free")
+  facet_wrap(~generation,nrow=1,scales="free")+
+  labs(x="Gamete Size",y="")
 
 
+#Generate histograms of gamete size
+p1hist<-ggplot(data=plotData,
+       aes(x=gameteSizeGene1))+
+  geom_histogram(fill=I("steelblue"),color=I("black"))+
+  facet_wrap(~generation,nrow=1,scales="free")+
+  labs(x="Gamete Size")
 
+
+#Plot gamete size against fusion target in the final generation
 p2<-ggplot(data=data[data$generation==max(data$generation),],
        aes(y=fusionTargetGene1,
            x=gameteSizeGene1))+
+  labs(x="Gamete Size",y="Fusion Target")+
   geom_point()+facet_wrap(~modelLoop,nrow=10,ncol=10)+
   theme(strip.background=element_blank(),strip.text.x=element_blank())
 
@@ -72,7 +67,12 @@ p2<-ggplot(data=data[data$generation==max(data$generation),],
 
 ```{r save}
 
-ggsave("figures/MSAG SexRepro Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+ggsave("figures/MSAG Sex Evolution Petri Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+
+
+ggsave("figures/MSAG Sex Evolution Histogram Figure.tiff",p1hist,width=10,height=6,units="in",dpi=300)
+
+ggsave("figures/MSAG Sex Evolution Fusion Target Figure.tiff",p2,width=12,height=12,dpi=300)
 
 ```
 
