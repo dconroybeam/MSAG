@@ -64,7 +64,7 @@ actions<-c("parent",paste0("meat",1:5),paste0("plant",1:5))
 
 #Lifespan#
 #Number of learning trials agents experience
-lifeSpan<-length(states)*length(actions)*5
+lifeSpan<-length(states)*length(actions)*10
 
 
 
