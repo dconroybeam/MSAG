@@ -367,26 +367,29 @@ environmentSetup<-function(){
   
   #Randomly generate an environment in which optimal foraging policy is either sex-differentiated or not
   if (rbinom(1, 1, .5)) {
-    foragingVariables$productivity <- c(1, rep(0, 4), 1, rep(0, 4))
-    foragingVariables$practice <- c(1, rep(0, 9))
-    foragingVariables$risk <- c(rep(1,5),rep(0,5))
-    foragingVariables$danger <- c(1, rep(0, 9))
-    foragingVariables$childCompat <- c(rep(0,5),rep(1,5))
+    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$practice <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
+    foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
   } else {
-    foragingVariables$productivity <- c(1, rep(0, 4), 1, rep(0, 4))
-    foragingVariables$practice <- rep(0, 10)
-    foragingVariables$risk <- c(0, rep(1, 4), 0, rep(1, 4))
-    foragingVariables$danger <- c(0, rep(1, 4), 0, rep(1, 4))
-    foragingVariables$childCompat <- rep(1, 10)
+    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$practice <- c(0,rep(0,length(actions[-(1:2)])))
+    foragingVariables$risk <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
+    foragingVariables$danger <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
+    foragingVariables$childCompat <- rep(1,length(actions[-1]))
   }
+  
+  top<-head(1:nrow(foragingVariables),nrow(foragingVariables)/2)
+  bottom<-tail(1:nrow(foragingVariables),nrow(foragingVariables)/2)
   
   #Randomly scramble the environment variables
   if(rbinom(1,1,.5)){
-    foragingVariables[,-1]<-foragingVariables[c(length(actions):(length(actions[-1])*2),1:(length(actions)-1)),-1]
+    foragingVariables[,-1]<-foragingVariables[c(bottom,top),-1]
   }
 
   if(rbinom(1,1,.5)){
-    foragingVariables[,-1]<-foragingVariables[c(sample(1:(length(actions)-1)),sample(length(actions):(length(actions[-1])*2))),-1]
+    foragingVariables[,-1]<-foragingVariables[c(sample(top),sample(bottom)),-1]
   }
 
   #Generate transition matrices for this environment
@@ -506,15 +509,15 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
     #Determine new household states
     newStates[newStates$hh==agents$hh[a],
           ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grep("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),
+                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),
                         3,4))]<-newStates[newStates$hh==agents$hh[a],
           ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grep("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),3,4))] + 
+                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),3,4))] + 
       actionResults$yield[match(agents$ID[a],actionResults$agentID)]
     
     #Determine what resource the agent's action generated
     actionResource<-ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)]=="parent",1,
-                           ifelse(grep("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),2,3))
+                           ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),2,3))
     
     #Calculate the reward this action should generate
     #Actions that generate any resource other than the one the household has the least of  results in decreased reward
