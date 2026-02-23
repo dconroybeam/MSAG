@@ -903,13 +903,15 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           #Maintain those offspring that will be born into this environment
           shuffledOffspring[[v]][[1]]<-offspring[[v]][[1]][newEnv[[v]]==v,]
           shuffledOffspring[[v]][[2]]<-offspring[[v]][[2]][newEnv[[v]]==v]
-          shuffledOffspring[[v]][[3]]<-offspring[[v]][[3]][newEnv[[v]]==v]
-         
+          shuffledOffspring[[v]][[3]][[1]]<-offspring[[v]][[3]][[1]][newEnv[[v]]==v]
+          shuffledOffspring[[v]][[3]][[2]]<-offspring[[v]][[3]][[1]][newEnv[[v]]==v]
+          
           #And add in offspring from other environments that will be born into this one
           for(n in (1:numEnv)[-v]){
             shuffledOffspring[[v]][[1]]<-rbind(shuffledOffspring[[v]][[1]],offspring[[n]][[1]][newEnv[[n]]==v,])
             shuffledOffspring[[v]][[2]]<-append(shuffledOffspring[[v]][[2]],offspring[[n]][[2]][newEnv[[n]]==v])
-            shuffledOffspring[[v]][[3]]<-append(shuffledOffspring[[v]][[3]],offspring[[n]][[3]][newEnv[[n]]==v])
+            shuffledOffspring[[v]][[3]][[1]]<-append(shuffledOffspring[[v]][[3]][[1]],offspring[[n]][[3]][[1]][newEnv[[n]]==v])
+            shuffledOffspring[[v]][[3]][[2]]<-append(shuffledOffspring[[v]][[3]][[2]],offspring[[n]][[3]][[2]][newEnv[[n]]==v])
           }
          
          
@@ -923,7 +925,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           rbind(
             data[[x]],
             cbind(
-              "modelLoop" = m,
+              "modelLoop" = m+1,
               "generation" = g,
               "environmentChange" = c,
               agents[[x]][,1:(19+length(actions)+1)]
