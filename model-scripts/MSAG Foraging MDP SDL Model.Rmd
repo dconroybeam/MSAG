@@ -32,7 +32,7 @@ states<-c("parenting","successful","unsuccessful","injurySelf","injuryChild")
 
 #Foraging Actions#
 #Create the set of possible actions agents can take
-actions<-c("parent","meat1","meat2","plant1","plant2")
+actions<-c("parent",paste0("meat",1:5),paste0("plant",1:5))
 
 
 
@@ -62,7 +62,7 @@ epsilon<-1
 
 #Epsilon Decay Rate#
 #How quickly epsilon decays with time
-epsilonDecay<-1/(250)
+epsilonDecay<-1/(length(states)*length(actions)*10)
 
 ```
 
@@ -94,12 +94,12 @@ agentGenerate <- function(population, actions, states) {
   #Rearrange
   agents<-agents[,c(1:8,16,9:15,17)]
   
-  #Create variables to track action history
-  agents$parentHist<-0
-  agents$meat1Hist<-0
-  agents$meat2Hist<-0
-  agents$plant1Hist<-0
-  agents$plant2Hist<-0
+  for(a in actions){
+  agents$x<-0
+  
+  colnames(agents)[ncol(agents)]<-paste0(a,"Hist")
+  
+  }
   
   #Store a reward value
   agents$reward<-0
@@ -113,41 +113,13 @@ agentGenerate <- function(population, actions, states) {
           length(states),
           dimnames = list(actions, states)
         )))
-
-  #Initialize action value matrices for non-learning agents
-  qInherit<-lapply(1:nrow(agents),function(x)
-    lapply(1:2,function(z)
-      lapply(1:3, function(y)
-        matrix(
-          0,
-          length(actions),
-          length(states),
-          dimnames = list(actions, states)
-        ))
-      )
-    )
   
-  #Loop through inherited action value matrices
-  for(l in 1:length(qInherit)){
-    
-    #Randomly set probability of either foraging action to 1 when that action's
-    #nutrient is lowest
-    qInherit[[l]][[1]][[1]][1,]<-1
-    qInherit[[l]][[1]][[2]][sample(2:3,1),]<-1
-    qInherit[[l]][[1]][[3]][sample(4:5,1),]<-1
-    
-    qInherit[[l]][[2]][[1]][1,]<-1
-    qInherit[[l]][[2]][[2]][sample(2:3,1),]<-1
-    qInherit[[l]][[2]][[3]][sample(4:5,1),]<-1
-  }
   
   #Label action value matrioces    
   names(q)<-agents$ID
-  names(qInherit)<-agents$ID
-
   
   #Output agents
-  return(list(agents,q,qInherit))
+  return(list(agents,q))
 }
 
 
@@ -166,12 +138,11 @@ resample<-function(x,n){
 
 #Action Selection#
 #A function for selecting actions given agents' action-value functions and learning rule
-actionSelection<-function(agents,q, qInherit){
+actionSelection<-function(agents,q){
   
   #Loop through agents....
   chosenActions <- sapply(1:nrow(agents), function(x)
     
-    if (agents$learningGene1[x] == 1) {
       #On Epsilon% of trials...
       if (rbinom(1, 1, rbinom(1, 1, max(c(.05, epsilon - epsilonDecay * l))))) {
         #Pick a random action
@@ -181,10 +152,7 @@ actionSelection<-function(agents,q, qInherit){
         actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
       }
-    } else {
-      #Pick action probabilistically proportional to inherited action value
-      actions[sample(1:length(actions), 1, prob = qInherit[[as.character(agents$ID[x])]][[1]][[agents$hhState[x]]][, agents$state[x]])]
-    }
+
   )
   
   #Output the actions
@@ -340,17 +308,17 @@ environmentSetup<-function(environment){
   
   #Generate an environment in which optimal foraging policy is either sex-differentiated or not
   if (environment==1) {
-    foragingVariables$productivity <- c(1, 0, 1, 0)
-    foragingVariables$practice <- c(1, 0, 0, 0)
-    foragingVariables$risk <- c(1, 1, 0, 0)
-    foragingVariables$danger <- c(1, 0, 0, 0)
-    foragingVariables$childCompat <- c(0, 0, 1, 1)
+    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$practice <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
+    foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
   } else {
-    foragingVariables$productivity <- c(1, 0, 1, 0)
-    foragingVariables$practice <- c(0, 0, 0, 0)
-    foragingVariables$risk <- c(0, 1, 0, 1)
-    foragingVariables$danger <- c(0, 1, 0, 1)
-    foragingVariables$childCompat <- c(1, 1, 1, 1)
+    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$practice <- c(0,rep(0,length(actions[-(1:2)])))
+    foragingVariables$risk <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
+    foragingVariables$danger <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
+    foragingVariables$childCompat <- rep(1,length(actions[-1]))
   }
  
   #Generate transition matrices for this environment
@@ -417,12 +385,24 @@ transitions<-function(agents,chosenActions,tMatrices){
 
 
 
+
 #Reward Calculation#
-#A function for determing agents' reward given their states and actions
+#A function for determining agents' reward given their states and actions
 rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
   
   #Create a dataframe reflecting the new household states
   newStates<-hhStates
+  
+  #Create a dataframe reflecting observations of the agents' outcomes (for social learning)
+  observations<-actionResults
+  
+  #Add agent gamete size, household state, and reward columns to observations
+  observations$gameteSize<-agents$gameteSizeGene1[match(observations$agentID,agents$ID)]
+  observations$hhState<-agents$hhState[match(observations$agentID,agents$ID)]
+  observations$reward<-0
+  
+  #Rearrange
+  observations<-observations[,c(1:2,7:8,3:6,9)]
   
   #Loop through action results and update household states based on results
   for(a in 1:nrow(agents)){
@@ -430,23 +410,24 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
     #Determine new household states
     newStates[newStates$hh==agents$hh[a],
           ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] %in% 
-                          c("meat1","meat2"),3,4))]<-newStates[newStates$hh==agents$hh[a],
+                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),
+                        3,4))]<-newStates[newStates$hh==agents$hh[a],
           ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] %in% 
-                          c("meat1","meat2"),3,4))] + 
+                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),3,4))] + 
       actionResults$yield[match(agents$ID[a],actionResults$agentID)]
     
     #Determine what resource the agent's action generated
     actionResource<-ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)]=="parent",1,
-                           ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)] %in% 
-                                    c("meat1","meat2"),2,3))
+                           ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),2,3))
     
     #Calculate the reward this action should generate
     #Actions that generate any resource other than the one the household has the least of  results in decreased reward
     agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
                         actionResults$yield[match(agents$ID[a],actionResults$agentID)],
                         actionResults$yield[match(agents$ID[a],actionResults$agentID)]*.25)
+    
+    #Update observations with reward
+    observations$reward[match(agents$ID[a],observations$agentID)]<-agentReward
     
 
     #Update agents' total rewards
@@ -467,7 +448,7 @@ rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
   #Update household states
   hhStates<-newStates
   
-  return(list(agents,q,hhStates))
+  return(list(agents,q,hhStates,observations))
 }
 
 
@@ -503,10 +484,6 @@ for (p in populations) {
     #Extract initial action value functions
     q <- popGen[[2]]
     
-    #Extract inherited q values
-    qInherit<-popGen[[3]]
-
-    
     #Determine starting population size
     popSize <- nrow(agents)
     
@@ -534,8 +511,6 @@ for (p in populations) {
       
       #And remove their action value functions
       q <- q[names(q) %in% agents$ID]
-      qInherit <- qInherit[names(qInherit) %in% agents$ID]
-
       
       
       #Household states:
@@ -560,7 +535,7 @@ for (p in populations) {
       #Loop through days of agents' lives
       for (l in 1:lifeSpan) {
         #Choose an action following epsilon-greedy policy
-        chosenActions <- actionSelection(agents, q, qInherit)
+        chosenActions <- actionSelection(agents, q)
         
         #Determine the state transitions and resource yield of those actions
         actionResults <- transitions(agents, chosenActions, tMatrices)
@@ -595,7 +570,7 @@ for (p in populations) {
     
     format <- ".csv"
     date <- format(Sys.time(), format = "%Y%m%d %H%M")
-    file <- file.path(paste0(path, p," ", date, format))
+    file <- file.path(paste0(path, e," ", date, format))
     
     #Save model data
     write.csv(agents, file = file, row.names = F)
