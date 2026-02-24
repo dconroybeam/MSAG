@@ -951,7 +951,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           m + 1,
           "-",
           v,
-          ifelse(e == max(envPredict), " PREDICT HI ", " PREDICT LO "),
+          ifelse(e == max(environmentPredict), " PREDICT HI ", " PREDICT LO "),
           date,
           format
         ))
@@ -959,13 +959,8 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
         #Save model data
         write.csv(data[[v]], file = file, row.names = F)
       }
-      
-      
     }
   }
-  
-  
-  
 }
 
 stopCluster(clust)
