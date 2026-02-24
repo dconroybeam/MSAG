@@ -1,0 +1,98 @@
+```{r packages}
+
+library(ggplot2)
+
+```
+
+
+
+```{r loadData}
+
+#Load all model outputs
+data<-lapply(list.files("model-outputs/foraging/learning-sex-diffs",full.names=T),read.csv)
+
+#Rbind all CSVs together into one dataframe
+data<-do.call("rbind",data)
+
+```
+
+
+
+```{r plot}
+
+#Relabel gamete sizes
+data$gameteSizeGene1<-ifelse(data$gameteSizeGene1>3,"Large Gametes","Small Gametes")
+
+#Create a variable reflecting specialization in foraging meat
+data$meatSpec<-factor(ifelse(data$meat1Hist>2000,"High Meat Foraging (>2000)","Low Meat Foraging (<2000)"))
+data$meatSpec<-factor(data$meatSpec,levels=c("Low Meat Foraging (<2000)","High Meat Foraging (>2000)"))
+
+
+
+
+p1<-ggplot(data=data[data$environment==1,],
+       aes(x=plant1Hist,
+           y=meat1Hist,
+           color=parentHist,
+           shape=gameteSizeGene1,
+           size=gameteSizeGene1))+
+  geom_point()+
+  scale_color_viridis_c()+
+  scale_shape_manual(values=c(19,17))+
+  scale_size_manual(values=c(4,2.5),guide="none")+
+  labs(x="Plant Foraging Frequency",
+       y="Meat Foraging Frequency",
+       color="Parenting Frequency",
+       shape="Gamete Size")+
+  theme_gray(base_size=20)
+
+
+p2<-ggplot(data=data[data$environment==2,],
+       aes(x=plant1Hist,
+           y=meat1Hist,
+           color=parentHist,
+           shape=gameteSizeGene1,
+           size=gameteSizeGene1))+
+  geom_point()+
+  scale_color_viridis_c()+
+  scale_size_manual(values=c(4,2.5),guide="none")+
+  scale_shape_manual(values=c(19,17))+
+    labs(x="Plant Foraging Frequency",
+       y="Meat Foraging Frequency",
+       color="Parenting Frequency",
+       shape="Gamete Size")+
+  theme_gray(base_size=20)
+
+
+
+p3<-ggplot(data=data[data$environment==3,],
+       aes(x=plant1Hist,
+           y=plant2Hist,
+           color=parentHist,
+           shape=gameteSizeGene1,
+           size=gameteSizeGene1))+
+  geom_point()+
+  scale_color_viridis_c()+
+  scale_shape_manual(values=c(19,17))+
+  facet_wrap(~meatSpec)+
+  labs(x="Plant 1 Foraging Frequency",
+       y="Plant 2 Foraging Frequency",
+       color="Parenting Frequency",
+       shape="Gamete Size")+
+  scale_size_manual(values=c(4,2.5),guide="none")+
+  theme_gray(base_size=20)
+
+
+
+```
+
+
+
+```{r save}
+
+ggsave("figures/MSAG Learning Sex Differences Figure 1.tiff",p2,width=10,height=8,units="in",dpi=300)
+ggsave("figures/MSAG Learning Sex Differences Figure 2.tiff",p1,width=10,height=8,units="in",dpi=300)
+ggsave("figures/MSAG Learning Sex Differences Figure 3.tiff",p3,width=12,height=8,units="in",dpi=300)
+
+```
+

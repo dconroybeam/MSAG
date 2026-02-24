@@ -20,7 +20,7 @@ generations<-1
 
 #Environments#
 #Determine which of two environments to simulate
-environments<-1:2
+environments<-1:3
 
 
 
@@ -306,19 +306,25 @@ environmentSetup<-function(environment){
                                 "danger"=0,
                                 "childCompat"=0)
   
-  #Generate an environment in which optimal foraging policy is either sex-differentiated or not
+  #Generate an environment in which optimal foraging policy is either not sex-differentiated (e=1), is sex-differentiated (e=2), or is sex-differentiated but multiple within-sex optima (e=3)
   if (environment==1) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- c(1,rep(0,length(actions[-(1:2)])))
     foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
     foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
     foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
-  } else {
+  } else if (environment==2) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- c(0,rep(0,length(actions[-(1:2)])))
     foragingVariables$risk <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
     foragingVariables$danger <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
     foragingVariables$childCompat <- rep(1,length(actions[-1]))
+  } else {
+    foragingVariables$productivity <- c(1,rep(0,length(actions[-1])/2-1),rep(1,2),rep(0,length(actions[-1])/2-2))
+    foragingVariables$practice <- c(1,rep(0,length(actions[-1])/2-1),rep(1,2),rep(0,length(actions[-1])/2-2))
+    foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
+    foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
   }
  
   #Generate transition matrices for this environment
