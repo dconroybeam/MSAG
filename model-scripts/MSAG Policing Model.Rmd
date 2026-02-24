@@ -134,8 +134,8 @@ agentGenerate <- function(m, actions, states) {
     agents[[l]]<-agents[[l]][,1:19]
     
     #Create a gene reflecting whether agents police the policy of others
-    agents[[l]]$policingGene1<-runif(nrow(agents),0,1)
-    agents[[l]]$policingGene2<-runif(nrow(agents),0,1)
+    agents[[l]]$policingGene1<-runif(nrow(agents[[l]]),0,1)
+    agents[[l]]$policingGene2<-runif(nrow(agents[[l]]),0,1)
     
     #Create variables to keep track of agents' same-sex parents and their policing gene
     agents[[l]]$ssParentID<-0

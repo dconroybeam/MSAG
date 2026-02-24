@@ -24,11 +24,11 @@ data<-do.call("rbind",data)
 #Create a dataframe for plotting average gamete size and fusion target over time
 plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$environmentChange))))
 plotData$change<-rep(sort(unique(data$environmentChange)),each=length(unique(data$generation)))
-plotData$mean<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),mean))
+plotData$mean<-c(tapply(data$socialLearningGene1==2,list(data$generation,data$environmentChange),mean))
 
 #Compute CIs on gamete sizes
-plotData$lci<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-plotData$uci<-c(tapply(data$learningGene1,list(data$generation,data$environmentChange),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$lci<-c(tapply(data$socialLearningGene1==2,list(data$generation,data$environmentChange),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
+plotData$uci<-c(tapply(data$socialLearningGene1==2,list(data$generation,data$environmentChange),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
 
 
 ```
