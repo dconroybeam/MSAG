@@ -142,7 +142,7 @@ agentGenerate <- function(m, actions, states) {
     agents[[l]]$ssParentPolice<-0
   
     #Rearrange
-    agents[[l]]<-agents[[l]][,c(1,22:23,2:9,20,10:19,21)]
+    agents[[l]]<-agents[[l]][,c(1,22:23,2:10,20,11:19,21)]
     
     for(a in actions){
       agents[[l]]$x<-0
@@ -403,9 +403,8 @@ environmentSetup<-function(){
     foragingVariables[,-1]<-foragingVariables[c(bottom,top),-1]
   }
 
-  if(rbinom(1,1,.5)){
-    foragingVariables[,-1]<-foragingVariables[c(sample(top),sample(bottom)),-1]
-  }
+  foragingVariables[,-1]<-foragingVariables[c(sample(top),sample(bottom)),-1]
+
 
   #Generate transition matrices for this environment
   tMatrices <- lapply(actions, function(x)
@@ -632,14 +631,19 @@ reproduce <- function(agents, v) {
     offspring<-rbind(offspring,child)
   }
   
-  #Add mutation to relevant genes
-  offspring$socialLearningGene1<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  sample(0:2,nrow(offspring),replace=T),
-                                  offspring$socialLearningGene1)
+  offspring$ssParentPolice<-as.numeric(offspring$ssParentPolice)
   
-  offspring$socialLearningGene2<-ifelse(rbinom(nrow(offspring),1,mutationRate),
-                                  sample(0:2,nrow(offspring),replace=T),
-                                  offspring$socialLearningGene2)
+  #Add mutation to relevant genes
+  offspring$policingGene1<-rnorm(nrow(offspring),offspring$policingGene1,mutationRate)
+  offspring$policingGene2<-rnorm(nrow(offspring),offspring$policingGene1,mutationRate)
+  
+  offspring$policingGene1<-ifelse(offspring$policingGene1>1,1,
+                                       ifelse(offspring$policingGene1<0,0,
+                                              offspring$policingGene1))
+  
+  offspring$policingGene2<-ifelse(offspring$policingGene2>1,1,
+                                       ifelse(offspring$policingGene2<0,0,
+                                              offspring$policingGene2))
   
   #Rename and re-label
   rownames(offspring)<-1:nrow(offspring)
@@ -777,59 +781,20 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           #Randomly pair each agent with an opposite-sex partner
           agents[[v]]$mID <- NA
           
-          #Split agents into learners and non-learners
-          aSocial <- agents[[v]][agents[[v]]$socialLearningGene1 == 0, ]
-          socialLearners <- agents[[v]][agents[[v]]$socialLearningGene1 == 1, ]
-          genderLearners <- agents[[v]][agents[[v]]$socialLearningGene1 == 2, ]
-          
-          
-          #Pair agents with opposite sex partners
-          if (sum(aSocial$gameteSizeGene1 > 3) > sum(aSocial$gameteSizeGene1 < 3)) {
-            aSocial$mID[aSocial$gameteSizeGene1 < 3] <- sample(aSocial$ID[aSocial$gameteSizeGene1 > 3],
-                                                               nrow(aSocial[aSocial$gameteSizeGene1 < 3, ]))
+          #Pair agents[[v]] with opposite sex partners
+          if (sum(agents[[v]]$gameteSizeGene1 > 3) > sum(agents[[v]]$gameteSizeGene1 < 3)) {
+            agents[[v]]$mID[agents[[v]]$gameteSizeGene1 < 3] <- sample(agents[[v]]$ID[agents[[v]]$gameteSizeGene1 > 3],
+                                                                             nrow(agents[[v]][agents[[v]]$gameteSizeGene1 < 3, ]))
           } else {
-            aSocial$mID[aSocial$gameteSizeGene1 > 3] <- sample(aSocial$ID[aSocial$gameteSizeGene1 < 3],
-                                                               nrow(aSocial[aSocial$gameteSizeGene1 > 3, ]))
+            agents[[v]]$mID[agents[[v]]$gameteSizeGene1 > 3] <- sample(agents[[v]]$ID[agents[[v]]$gameteSizeGene1 < 3],
+                                                                             nrow(agents[[v]][agents[[v]]$gameteSizeGene1 > 3, ]))
             
           }
           
           #Update mate IDs
-          aSocial$mID <- ifelse(is.na(aSocial$mID) == 1, aSocial$ID[match(aSocial$ID, aSocial$mID)], aSocial$mID)
-          
-          #Pair agents with opposite sex partners
-          if (sum(socialLearners$gameteSizeGene1 > 3) > sum(socialLearners$gameteSizeGene1 < 3)) {
-            socialLearners$mID[socialLearners$gameteSizeGene1 < 3] <- sample(socialLearners$ID[socialLearners$gameteSizeGene1 > 3],
-                                                                             nrow(socialLearners[socialLearners$gameteSizeGene1 < 3, ]))
-          } else {
-            socialLearners$mID[socialLearners$gameteSizeGene1 > 3] <- sample(socialLearners$ID[socialLearners$gameteSizeGene1 < 3],
-                                                                             nrow(socialLearners[socialLearners$gameteSizeGene1 > 3, ]))
-            
-          }
-          
-          #Update mate IDs
-          socialLearners$mID <- ifelse(is.na(socialLearners$mID) == 1,
-                                       socialLearners$ID[match(socialLearners$ID, socialLearners$mID)],
-                                       socialLearners$mID)
-          
-          
-          #Pair agents with opposite sex partners
-          if (sum(genderLearners$gameteSizeGene1 > 3) > sum(genderLearners$gameteSizeGene1 < 3)) {
-            genderLearners$mID[genderLearners$gameteSizeGene1 < 3] <- sample(genderLearners$ID[genderLearners$gameteSizeGene1 > 3],
-                                                                             nrow(genderLearners[genderLearners$gameteSizeGene1 < 3, ]))
-          } else {
-            genderLearners$mID[genderLearners$gameteSizeGene1 > 3] <- sample(genderLearners$ID[genderLearners$gameteSizeGene1 < 3],
-                                                                             nrow(genderLearners[genderLearners$gameteSizeGene1 > 3, ]))
-            
-          }
-          
-          #Update mate IDs
-          genderLearners$mID <- ifelse(is.na(genderLearners$mID) == 1,
-                                       genderLearners$ID[match(genderLearners$ID, genderLearners$mID)],
-                                       genderLearners$mID)
-          
-          
-          #Re-merge agents
-          agents[[v]] <- rbind(aSocial, socialLearners, genderLearners)
+          agents[[v]]$mID <- ifelse(is.na(agents[[v]]$mID) == 1,
+                                       agents[[v]]$ID[match(agents[[v]]$ID, agents[[v]]$mID)],
+                                       agents[[v]]$mID)
           
           #And rearrange by ID
           agents[[v]] <- agents[[v]][order(agents[[v]]$ID), ]
