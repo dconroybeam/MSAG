@@ -388,9 +388,8 @@ environmentSetup<-function(){
     foragingVariables[,-1]<-foragingVariables[c(bottom,top),-1]
   }
 
-  if(rbinom(1,1,.5)){
-    foragingVariables[,-1]<-foragingVariables[c(sample(top),sample(bottom)),-1]
-  }
+  foragingVariables[,-1]<-foragingVariables[c(sample(top),sample(bottom)),-1]
+
 
   #Generate transition matrices for this environment
   tMatrices <- lapply(actions, function(x)
