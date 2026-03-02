@@ -368,7 +368,7 @@ environmentSetup<-function(){
   #Randomly generate an environment in which optimal foraging policy is either sex-differentiated or not
   if (rbinom(1, 1, .5)) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
-    foragingVariables$practice <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
     foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
     foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
@@ -440,7 +440,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                   yield,
                   ifelse(foragingVariables$practice[foragingVariables==chosenActions[a]]==0,
                          yield,
-                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((lifeSpan)/3))))
+                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/3))))
     
 
     #Determine the result of that transition
