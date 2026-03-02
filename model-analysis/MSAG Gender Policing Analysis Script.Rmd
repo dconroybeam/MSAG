@@ -11,6 +11,13 @@ library(ggplot2)
 #Load all model outputs
 data<-lapply(list.files("model-outputs/gender-policing",full.names=T),read.csv)
 
+for(m in 1:length(data)){
+  data[[m]]$envChange<-ifelse(grepl("PREDICT HI",list.files("model-outputs/gender-policing")[m]),
+                  "High Env. Change",
+                  "Low Env. Change")
+}
+
+
 #Rbind all CSVs together into one dataframe
 data<-do.call("rbind",data)
 
@@ -19,7 +26,6 @@ data<-do.call("rbind",data)
 
 
 ```{r analysis}
-
 
 #Create a dataframe for plotting average gamete size and fusion target over time
 plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$envChange))))
@@ -39,8 +45,6 @@ plotData$uci<-c(tapply(data$policingGene1,list(data$generation,data$envChange),f
 
 plotData$lci[plotData$lci<0]<-0
 plotData$uci[plotData$uci>1]<-1
-
-plotData$change<-factor(ifelse(plotData$change==0,"Low Env. Change","High Env. Change"))
 
 ```
 
