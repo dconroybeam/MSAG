@@ -1,0 +1,74 @@
+```{r packages}
+
+library(ggplot2)
+
+```
+
+
+
+```{r loadData}
+
+#Load all model outputs
+data<-lapply(list.files("model-outputs/gender-policing",full.names=T),read.csv)
+
+#Rbind all CSVs together into one dataframe
+data<-do.call("rbind",data)
+
+```
+
+
+
+```{r analysis}
+
+
+#Create a dataframe for plotting average gamete size and fusion target over time
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$envChange))))
+plotData$change<-rep(sort(unique(data$envChange)),each=length(unique(data$generation)))
+
+plotData$mean<-c(tapply(data$policingGene1,list(data$generation,data$envChange),mean))
+
+#Compute CIs on gamete sizes
+
+plotData$lci<- c(tapply(data$policingGene1,list(data$generation,data$envChange),function(y)
+  mean(y)-sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
+  ))
+
+plotData$uci<-c(tapply(data$policingGene1,list(data$generation,data$envChange),function(y)
+  mean(y)+sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
+  ))
+
+plotData$lci[plotData$lci<0]<-0
+plotData$uci[plotData$uci>1]<-1
+
+plotData$change<-factor(ifelse(plotData$change==0,"Low Env. Change","High Env. Change"))
+
+```
+
+
+
+```{r plot}
+
+
+p1<-ggplot(data=plotData,
+           aes(x=generation,y=mean,color=change))+
+  geom_errorbar(aes(ymin=lci,ymax=uci))+
+  labs(x="Generation",y="Probability of Enforcing Parent Policy",
+       color="Rate of Environmental Change")+
+  scale_color_manual(values=c("dodgerblue3","firebrick3"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
+
+
+```
+
+
+
+```{r save}
+
+ggsave("figures/MSAG Gender Policing Figure.tiff",p1,width=12,height=6,units="in",dpi=300)
+
+```
+
