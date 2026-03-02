@@ -377,7 +377,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                   yield,
                   ifelse(foragingVariables$practice[foragingVariables==chosenActions[a]]==0,
                          yield,
-                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((lifeSpan)/3))))
+                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/3))))
     
 
     #Determine the result of that transition
