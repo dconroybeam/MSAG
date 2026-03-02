@@ -11,13 +11,6 @@ library(ggplot2)
 #Load all model outputs
 data<-lapply(list.files("model-outputs/gender-policing",full.names=T),read.csv)
 
-for(m in 1:length(data)){
-  data[[m]]$envChange<-ifelse(grepl("PREDICT HI",list.files("model-outputs/gender-policing")[m]),
-                  "High Env. Change",
-                  "Low Env. Change")
-}
-
-
 #Rbind all CSVs together into one dataframe
 data<-do.call("rbind",data)
 
@@ -28,23 +21,25 @@ data<-do.call("rbind",data)
 ```{r analysis}
 
 #Create a dataframe for plotting average gamete size and fusion target over time
-plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$envChange))))
-plotData$change<-rep(sort(unique(data$envChange)),each=length(unique(data$generation)))
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$environmentChange))))
+plotData$change<-rep(sort(unique(data$environmentChange)),each=length(unique(data$generation)))
 
-plotData$mean<-c(tapply(data$policingGene1,list(data$generation,data$envChange),mean))
+plotData$mean<-c(tapply(data$policingGene1,list(data$generation,data$environmentChange),mean))
 
 #Compute CIs on gamete sizes
 
-plotData$lci<- c(tapply(data$policingGene1,list(data$generation,data$envChange),function(y)
+plotData$lci<- c(tapply(data$policingGene1,list(data$generation,data$environmentChange),function(y)
   mean(y)-sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
   ))
 
-plotData$uci<-c(tapply(data$policingGene1,list(data$generation,data$envChange),function(y)
+plotData$uci<-c(tapply(data$policingGene1,list(data$generation,data$environmentChange),function(y)
   mean(y)+sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
   ))
 
 plotData$lci[plotData$lci<0]<-0
 plotData$uci[plotData$uci>1]<-1
+
+plotData$change<-ifelse(plotData$change==1,"High Env. Change","Low Env. Change")
 
 ```
 
