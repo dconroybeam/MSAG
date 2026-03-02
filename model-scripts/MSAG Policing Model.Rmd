@@ -46,7 +46,7 @@ selStrength<-5
 
 #Environment Predictability#
 #How predictable the agent's natal environment will be
-environmentPredict<-0
+environmentPredict<-1
 
 
 
@@ -715,7 +715,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
         cbind(
           "modelLoop" = m + 1,
           "generation" = 0,
-          "environmentPredict" = e,
+          "environmentChange" = c,
           agents[[x]]
         ))
       
@@ -923,7 +923,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
             cbind(
               "modelLoop" = m+1,
               "generation" = g,
-              "environmentPredict" = e,
+              "environmentChange" = c,
               agents[[x]][,1:(23+length(actions)+1)]
             )
           ))
@@ -942,7 +942,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
       #Loop through environments
       for (v in 1:numEnv) {
         #Create a unique filename and filepath
-        path <- "model-outputs/gender-policing/MSAG policing Evolution Population "
+        path <- "model-outputs/gender-policing/MSAG Policing Evolution Population "
         
         format <- ".csv"
         date <- format(Sys.time(), format = "%Y%m%d %H%M")
@@ -951,7 +951,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           m + 1,
           "-",
           v,
-          ifelse(e == max(environmentPredict), " PREDICT HI ", " PREDICT LO "),
+          ifelse(e == max(envChange), " CHANGE HI ", " CHANGE LO "),
           date,
           format
         ))
