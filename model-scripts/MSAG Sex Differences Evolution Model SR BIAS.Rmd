@@ -12,7 +12,7 @@ populations<-length(list.files("model-outputs/sex-evolution/",full.names=T))
 
 
 #Number of generations
-generations<-30
+generations<-20
 
 
 
@@ -39,11 +39,6 @@ investCompetitionCost<-(.33)
 
 #Mutation rate
 mutationRate<-.05
-
-
-
-#Proportion of breeding population that belongs to the scarcer sex
-sexRatio<-.05
 
 ```
 
@@ -123,7 +118,7 @@ gameteProduce <- function(agent) {
 #Produce offspring from gametes
 reproduce <- function(focalGamete, targetGamete) {
   #If the gametes together meet the minimum resource threshold
-  #And if their gametes are sufficiently different in size (required to prevent "females" from pairing with one another when "males" are scarce)
+    #And if their gametes are sufficiently different in size (required to prevent "females" from pairing with one another when "males" are scarce)
   if ((focalGamete$gameteSizeExpressed + 
        targetGamete$gameteSizeExpressed) >= resourceThreshold &
       abs(focalGamete$gameteSizeExpressed - 
@@ -254,10 +249,12 @@ fusion <- function(gametes) {
 
 ```{r modelStart}
 
+
 #Number of Cores#
 #Number of cores to use for the parallel loop
 clust<-makeCluster(detectCores()-4)
 registerDoParallel(clust)
+
 
 #Loop through model loops
 foreach(p = 1:populations) %dopar% {
@@ -269,72 +266,55 @@ foreach(p = 1:populations) %dopar% {
   popSize<-nrow(agents)
   
   #Create a dataframe to store agents
-  data<-cbind("modelLoop"=p,"generation"=0,"sexRatio"=sexRatio,agents)
+  data<-cbind("modelLoop"=p,"generation"=0,agents)
   
   #Loop through generations
   for (g in 1:generations) {
     
-    print(g)
-    plot(investCompetitionGene1~gameteSizeGene1,data=agents)
+    #Pre-reproductive mortality
+    #Some agents die before getting to reproduce by virtue of their investment in mate competition
+    agents<-agents[which(rbinom(nrow(agents),
+                          1,
+                          1-(agents$investCompetitionGene1*investCompetitionCost))==1),]
     
-    #Create a blank offspring dataframe
-    offspring <- data.frame(
-      'parent1ID' = NA,
-      'parent2ID' = NA,
-      "gameteSizeGene1" = NA,
-      "fusionTargetGene1" = NA,
-      "investCompetitionGene1" = NA,
-      "investParentingGene1" = NA,
-      "gameteSizeGene2" = NA,
-      "fusionTargetGene2" = NA,
-      "investCompetitionGene2" = NA,
-      "investParentingGene2" = NA
-    )
     
-    #Determine when agents arrive to the "breeding territory"
-    breedingArrival<-ifelse(agents$gameteSizeGene1>3,
-                            rbinom(nrow(agents),1,sexRatio)+1,
-                            rbinom(nrow(agents),1,1-sexRatio)+1)
-    
-    #Separate mating into two different "periods" of a breeding season with staggered arrival
-    #Inspired by phalaropes
-    for (b in 1:2) {
+    #Reduce agent resources according to investment in parenting
+    #Agents have their gamete budget reduced to the extent that they invested in parenting
+    agentResources<-resources*(1-(agents$investParentingGene1))
+
+    #Generate gametes for each agent
+    gametes <- sapply(1:nrow(agents), function(x)
       
-      #Identify the agents available to mate
-      breedingPopulation<-agents[breedingArrival==b,]
-      
-      #Pre-reproductive mortality
-      #Some agents die before getting to reproduce by virtue of their investment in mate competition
-      breedingPopulation <- breedingPopulation[which(rbinom(
-        nrow(breedingPopulation),
-        1,
-        1 - (breedingPopulation$investCompetitionGene1 * investCompetitionCost)
-      ) == 1), ]
-      
-      #Generate gametes for each agent
-      gametes <- sapply(1:nrow(breedingPopulation), function(x)
+      as.matrix(t(
+        sapply(1:floor(agentResources[x]/ agents$gameteSizeGene1[x]), function(y)
+          gameteProduce(agents[x, ]))
         
-        as.matrix(t(
-          sapply(1:floor(resources / breedingPopulation$gameteSizeGene1[x]), function(y)
-            gameteProduce(breedingPopulation[x, ]))
-          
-        )))
-      
-      #Have gametes fuse to produce offspring
-      offspring <- rbind(offspring,fusion(gametes))
-    }
+      )))
     
-    #Remove the row of NAs
-    offspring<-offspring[-1,]
+    gametes<-sapply(1:length(gametes),function(x)
+      if(gametes[[x]][1,2]<3){
+        gametes[[x]][sample(1:nrow(gametes[[x]]),min(c(nrow(gametes[[x]]),4))),]
+      } else {
+        gametes[[x]]
+      }
+      )
+
+    #Have gametes fuse to produce offspring
+    offspring<-fusion(gametes)
     
-    offspring<-offspring[sample(1:nrow(offspring)),]
+    #Post-reproductive mortality
+    #Agents increase the likelihood of their offspring surviving to the extent that they invest in parenting
+    #This parenting is divided evenly among all of an agent's offspring
+    postReproMortalityRisk<-agents$investParentingGene1[match(offspring$parent1ID,agents$ID)]/
+      sapply(offspring$parent1ID,function(x) sum(c(offspring$parent1ID==x,offspring$parent2ID==x)))+
+      agents$investParentingGene1[match(offspring$parent2ID,agents$ID)]/
+      sapply(offspring$parent2ID,function(x) sum(c(offspring$parent1ID==x,offspring$parent2ID==x)))
+    
+    #Sort offspring by parents' investment in parenting
+    offspring<-offspring[order(postReproMortalityRisk,decreasing=T),]
     
     #Select the top popSize agents by parental investment to survive
     offspring<-offspring[1:min(c(nrow(offspring),popSize)),]
-    
-    if(nrow(offspring)<popSize){
-      offspring<-offspring[sample(1:nrow(offspring),popSize,replace=T),]
-    }
     
     #Overwrite parents with offspring
     agents<-offspring[sample(1:nrow(offspring)),]
@@ -349,7 +329,7 @@ foreach(p = 1:populations) %dopar% {
     agents$ID<-1:nrow(agents)
     
     #Save agents to overall data frame
-    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,"sexRatio"=sexRatio,agents))
+    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,agents))
     
   }
   

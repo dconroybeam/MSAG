@@ -38,10 +38,20 @@ plotData$uci<-c(tapply(data$learningGene1,list(data$generation,data$environmentP
 ```{r plot}
 
 
+p0<-ggplot(data=plotData[plotData$predict==1,],
+           aes(x=generation,y=mean,color=as.factor(predict)))+
+  geom_errorbar(aes(ymin=lci,ymax=uci))+
+  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment\nPredictability")+
+  scale_color_manual(values=c("firebrick3"))+
+  geom_point(size=2)+
+  geom_line(linewidth=1)+
+  coord_cartesian(ylim=c(0,1))+
+  theme_grey(base_size=20)
+
 p1<-ggplot(data=plotData,
            aes(x=generation,y=mean,color=as.factor(predict)))+
   geom_errorbar(aes(ymin=lci,ymax=uci))+
-  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment Predictability")+
+  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment\nPredictability")+
   scale_color_manual(values=c("dodgerblue3","firebrick3"))+
   geom_point(size=2)+
   geom_line(linewidth=1)+
@@ -56,7 +66,8 @@ p1<-ggplot(data=plotData,
 
 ```{r save}
 
-ggsave("figures/MSAG Learning Evolution Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+ggsave("figures/MSAG Learning Evolution Figure (Pred 1).tiff",p0,width=12,height=6,units="in",dpi=300)
+ggsave("figures/MSAG Learning Evolution Figure.tiff",p1,width=12,height=6,units="in",dpi=300)
 
 ```
 
