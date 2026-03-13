@@ -635,7 +635,7 @@ reproduce <- function(agents, v) {
   
   #Add mutation to relevant genes
   offspring$policingGene1<-rnorm(nrow(offspring),offspring$policingGene1,mutationRate)
-  offspring$policingGene2<-rnorm(nrow(offspring),offspring$policingGene1,mutationRate)
+  offspring$policingGene2<-rnorm(nrow(offspring),offspring$policingGene2,mutationRate)
   
   offspring$policingGene1<-ifelse(offspring$policingGene1>1,1,
                                        ifelse(offspring$policingGene1<0,0,

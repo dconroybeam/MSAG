@@ -53,7 +53,7 @@ plotData$change<-factor(ifelse(plotData$change==0,"Low Env. Change","High Env. C
 p1<-ggplot(data=plotData,
            aes(x=generation,y=mean,color=as.factor(strategy)))+
   geom_errorbar(aes(ymin=lci,ymax=uci))+
-  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Learning Strategy")+
+  labs(x="Generation",y="Proportion Agents\n w/ Learning Strategy",color="Learning Strategy")+
   facet_wrap(~change)+
   scale_color_manual(values=c("dodgerblue3","firebrick3","orange"))+
   geom_point(size=2)+

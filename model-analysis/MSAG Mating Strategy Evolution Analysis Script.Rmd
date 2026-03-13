@@ -96,7 +96,7 @@ p3<-ggplot(data=plotData,
 
 ```{r save}
 
-ggsave("figures/MSAG MP Tradeoff Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+ggsave("figures/MSAG MP Tradeoff Figure.tiff",p1,width=12,height=6,units="in",dpi=300)
 
 ggsave("figures/MSAG Mating Strategy--Parenting Figure.tiff",p2,width=10,height=6,units="in",dpi=300)
 

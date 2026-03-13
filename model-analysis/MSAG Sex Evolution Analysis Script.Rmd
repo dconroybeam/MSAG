@@ -50,7 +50,7 @@ p1hist<-ggplot(data=plotData,
        aes(x=gameteSizeGene1))+
   geom_histogram(fill=I("steelblue"),color=I("black"))+
   facet_wrap(~generation,nrow=1,scales="free")+
-  labs(x="Gamete Size")
+  labs(x="Gamete Size", y="Frequency")
 
 
 #Plot gamete size against fusion target in the final generation
@@ -67,12 +67,11 @@ p2<-ggplot(data=data[data$generation==max(data$generation),],
 
 ```{r save}
 
-ggsave("figures/MSAG Sex Evolution Petri Figure.tiff",p1,width=10,height=6,units="in",dpi=300)
+ggsave("figures/MSAG Sex Evolution Petri Figure.tiff",p1,width=12,height=3.5,units="in",dpi=300)
 
+ggsave("figures/MSAG Sex Evolution Histogram Figure.tiff",p1hist,width=12,height=3.5,units="in",dpi=300)
 
-ggsave("figures/MSAG Sex Evolution Histogram Figure.tiff",p1hist,width=10,height=6,units="in",dpi=300)
-
-ggsave("figures/MSAG Sex Evolution Fusion Target Figure.tiff",p2,width=12,height=12,dpi=300)
+ggsave("figures/MSAG Sex Evolution Fusion Target Figure.tiff",p2,width=12,height=6,dpi=300)
 
 ```
 

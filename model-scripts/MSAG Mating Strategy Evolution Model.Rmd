@@ -57,11 +57,6 @@ reproductionRounds<-10
 #The maximum number of mating opportunities an agent can pursue in a given mating round
 maxMates<-100
 
-
-
-#Number of pursuit opportunities agents will have within each mating round
-nPursuits<-50
-
 ```
 
 
