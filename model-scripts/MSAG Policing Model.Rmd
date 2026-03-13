@@ -46,7 +46,7 @@ selStrength<-5
 
 #Environment Predictability#
 #How predictable the agent's natal environment will be
-environmentPredict<-1
+environmentPredict<-.8
 
 
 
