@@ -1,0 +1,312 @@
+```{r packages}
+library(doParallel)
+```
+
+
+
+```{r parameters}
+
+#Populations#
+#The number of agent populations (determined by prior simulation)
+populations<-which(grepl("SEL HI",list.files("model-outputs/sexrepro-evolution/",full.names=T)))
+
+
+
+#Number of generations
+generations<-20
+
+
+
+#Minimum resources for offspring viability
+resourceThreshold<-5
+
+
+
+#Total resources agents will have for producing gametes
+resources<-resourceThreshold*20
+
+
+
+#Maximum number of gametes an agent will be allowed to produce
+maxGametes<-200
+
+
+
+#Population size
+popSize<-200
+
+
+
+#Mutation rate
+mutationRate<-.1
+
+
+
+#Viability cost imposed by cytoplasmic conflict
+cytoCost<-.33
+
+```
+
+
+
+```{r functions}
+
+
+#Agent Generation#
+#Generate the agents
+agentGenerate <- function(population) {
+  
+  #Load the agents
+  agents<-read.csv(list.files("model-outputs/sexrepro-evolution",full.names=T)[population])
+  
+  #Limit to just the final generation of agents
+  agents<-agents[agents$generation==max(agents$generation),]
+  
+  #Limit to sexually reproducing agents
+  agents<-agents[agents$sexGene==1,]
+  
+  #Remove modelLoop and generation columns for now
+  agents<-agents[,-(1:3)]
+  
+  
+  #Generate agents with
+  #gameteSizeGene = size of gametes produced
+  #fusionTargetGene = size of partners pursued for fusion
+  #Each agent has two sets of genes (inherited from parents)
+  #only the first gene will be expressed in gametes produced
+  agents <- cbind(agents,data.frame(
+    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionWindowGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
+    "fusionWindowGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold)
+
+  ))
+  
+  
+  #Output agents
+  return(agents)
+}
+
+
+
+#Gamete Production#
+#A function to produce gametes
+gameteProduce <- function(agent) {
+  #Generate a gamete that expresses the first set of parent genes
+  #and randomly carries either set of the agent's genes
+  if (rbinom(1, 1, .5)) {
+    gamete <- agent[, c(1:3, 1:3)]
+  } else{
+    gamete <- agent
+  }
+  
+  #Label columns
+  colnames(gamete) <- c(
+    "gameteSizeExpressed",
+    "fusionTargetExpressed",
+    "fusionWindowExpressed",
+    "gameteSizeGene",
+    "fusionTargetGene",
+    "fusionWindowGene"
+  )
+  
+  #Output the gamete
+  return(gamete)
+  
+}
+
+
+
+#Reproduce#
+#Produce offspring from gametes
+reproduce <- function(focalGamete, targetGamete) {
+  
+  #Calculate maximum difference in gamete size  
+  maxDiff<-resourceThreshold-(resources/maxGametes)
+  
+  #Calculate actual difference in gamete size
+  obsDiff<-abs(focalGamete$gameteSizeExpressed - targetGamete$gameteSizeExpressed)
+  
+  #Compute probability of viability of zygote given cytoplasmic conflict
+  #Gametes more similar in size will experience more intense cytoplasmic conflict
+  #And therefore lower viability, scaled by the cytoCost parameter
+  cytoViability<-1-(cytoCost*(1-obsDiff/maxDiff))^(1/3)
+  
+  #If the gametes together meet the minimum resource threshold and do not experience too much cytoplasmic conflict
+  if ((focalGamete$gameteSizeExpressed + 
+       targetGamete$gameteSizeExpressed) >= resourceThreshold &
+      rbinom(1,1,cytoViability)==1
+      ) {
+    #Generate the offspring from gametes
+    #Randomly determine which gamete's genes will be in the expressed (first) position
+    if (rbinom(1, 1, .5)) {
+      offspring <- c(
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene,
+        focalGamete$fusionWindowGene,
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene,
+        targetGamete$fusionWindowGene
+      )
+    } else {
+      offspring <- c(
+        targetGamete$gameteSizeGene,
+        targetGamete$fusionTargetGene,
+        targetGamete$fusionWindowGene,
+        focalGamete$gameteSizeGene,
+        focalGamete$fusionTargetGene,
+        focalGamete$fusionWindowGene
+      )
+    }
+    
+    #Mutation
+    offspring <- rnorm(6, offspring, mutationRate)
+    
+    #Convert to dataframe
+    offspring <- data.frame(t(offspring))
+    
+    #Label columns
+    colnames(offspring) <- c(
+      "gameteSizeGene1",
+      "fusionTargetGene1",
+      "fusionWindowGene1",
+      "gameteSizeGene2",
+      "fusionTargetGene2",
+      "fusionWindowGene2"
+    )
+    
+    #Keep offspring traits within bounds
+    offspring <- apply(offspring, 2, function(x)
+      ifelse(x > resourceThreshold, resourceThreshold + (resourceThreshold-x), ifelse(
+        x < (resources / maxGametes), (resources / maxGametes) + ((resources / maxGametes)-x), x
+      )))
+    
+    #Output offspring
+    return(data.frame(t(offspring)))
+  } else {
+    #If offspring is not viable, return nothing
+    return(NULL)
+  }
+  
+}
+
+
+
+#Gamete Fusion#
+#A function for simulating fusion of gametes
+fusion <- function(gametes) {
+  #Create a blank offspring dataframe
+  offspring <- data.frame(
+    "gameteSizeGene1" = NA,
+    "fusionTargetGene1" = NA,
+    "fusionWindowGene1" = NA,
+    "gameteSizeGene2" = NA,
+    "fusionTargetGene2" = NA,
+    "fusionWindowGene2" = NA
+  )
+  
+  #Convert gamete list to dataframe
+  gametes <- do.call(rbind.data.frame, gametes)
+  gametes<-as.data.frame(apply(gametes,2,unlist))
+  
+  #Randomly sort gamete dataframe
+  gametes <- gametes[sample(1:nrow(gametes)), ]
+  
+  #Loop through gametes
+  while (nrow(gametes)>1) {
+    #Select the first gamete to reproduce
+    focalGamete <- gametes[1, ]
+    
+    #Remove the focal gamete from the gamete matrix so it can't self-fuse
+    gametes <- gametes[-1, ]
+    
+    #Assign a unique ID to remaining gametes
+    gametes$gID<-1:nrow(gametes)
+    
+    #Identify gametes that would fuse with the target
+    targetGametes<-gametes[abs(focalGamete$gameteSizeExpressed -
+                                          gametes$fusionTargetExpressed) < gametes$fusionWindowExpressed,]
+    
+    if(nrow(targetGametes)>0){
+      #Identify the gamete closest to the focal gamete's fusion target
+      targetGamete<-targetGametes[which.min(abs(targetGametes$gameteSizeExpressed -
+                                            focalGamete$fusionTargetExpressed)),]
+      
+      #Have the gametes fuse to produce an offspring
+      offspring<-rbind(offspring,reproduce(focalGamete, targetGamete[,-ncol(targetGametes)]))
+      
+      #Remove the target gamete from the gamete matrix
+      gametes<-gametes[gametes$gID != targetGamete$gID,]
+    }
+    
+  }
+  
+  #Output the offspring
+  return(offspring[-1, ])
+}
+
+```
+
+
+
+```{r modelStart}
+
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(detectCores()-4)
+registerDoParallel(clust)
+
+#Loop through model loops
+foreach(p = populations) %dopar% {
+  #Generate the agents
+  agents <- agentGenerate(p)
+  
+  #Remove ID and sex gene columns as I won't actually be using them
+  agents<-agents[,-(1:2)]
+  
+  #Create a dataframe to store agents
+  data<-cbind("modelLoop"=p,"generation"=0,agents)
+  
+  #Loop through generations
+  for (g in 1:generations) {
+    
+    print(g)
+    hist(agents$gameteSizeGene1)
+    
+    
+    #Generate gametes for each agent
+    gametes <- sapply(1:nrow(agents), function(x)
+      
+      as.matrix(t(
+        sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
+          gameteProduce(agents[x, ]))
+        
+      )))
+
+    #Have gametes fuse to produce offspring
+    offspring<-fusion(gametes)
+    
+    #Limit number of offspring to popSize
+    agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring),popSize))), ]
+    
+    #Save agents to overall data frame
+    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,agents))
+    
+  }
+  
+  #Create a unique filename and filepath
+  path <- "model-outputs/sex-evolution/MSAG Sex Evolution Population CYTO "
+  
+  format <- ".csv"
+  date <- format(Sys.time(), format = "%Y%m%d %H%M")
+  file <- file.path(paste0(path, p, " ", date, format))
+  
+  #Save model data
+  write.csv(data, file = file, row.names = F)
+}
+
+stopCluster(clust)
+
+```
