@@ -24,8 +24,8 @@ data<-do.call("rbind",data)
 data$gameteSizeGene1<-ifelse(data$gameteSizeGene1>3,"Large Gametes","Small Gametes")
 
 #Create a variable reflecting specialization in foraging meat
-data$meatSpec<-factor(ifelse(data$meat1Hist>2000,"High Meat Foraging (>2000)","Low Meat Foraging (<2000)"))
-data$meatSpec<-factor(data$meatSpec,levels=c("Low Meat Foraging (<2000)","High Meat Foraging (>2000)"))
+data$meatSpec<-factor(ifelse(data$meat1Hist>1000,"High Meat Foraging (>1000)","Low Meat Foraging (<1000)"))
+data$meatSpec<-factor(data$meatSpec,levels=c("Low Meat Foraging (<1000)","High Meat Foraging (>1000)"))
 
 
 

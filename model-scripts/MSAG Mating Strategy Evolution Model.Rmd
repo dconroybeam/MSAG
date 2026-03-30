@@ -79,14 +79,14 @@ agentGenerate <- function(population) {
   #Relabel rows
   row.names(agents)<-1:nrow(agents)
   
-  #Add a trait reflecting mating-parenting tradeoff, a mate preference, and corresponding trait
+  #Add a trait reflecting mating-parenting tradeoff, a mate preference, and acceptable window around that preference for received offers
   agents$mpTradeoffGene1<-runif(nrow(agents),0,1)
   agents$prefGene1<-rnorm(nrow(agents),.7,mutationRate)
-  agents$traitGene1<-rnorm(nrow(agents),.7,mutationRate)
+  agents$windowGene1<-runif(nrow(agents),0,1)
   
   agents$mpTradeoffGene2<-runif(nrow(agents),0,1)
   agents$prefGene2<-rnorm(nrow(agents),.7,mutationRate)
-  agents$traitGene2<-rnorm(nrow(agents),.7,mutationRate)
+  agents$windowGene2<-runif(nrow(agents),0,1)
   
   #Rearrange
   agents<-agents[,c(1:5,10:12,6:9,13:15)]
@@ -104,7 +104,7 @@ mateChoice <- function(agents) {
 
   #Create a matrix of each agent's value to each other agent
   mvMatrix <- matrix(sapply(agents$prefGene1, function(x)
-    1 - abs(agents$traitGene1 - x)),
+    1 - abs(agents$windowGene1 - x)),
     nrow(agents),
     nrow(agents),
     byrow = T)
@@ -140,6 +140,10 @@ mateChoice <- function(agents) {
   choiceMatrix <- cbind(rep(choiceMatrix[, 1], each =
                                                 maxMates),
                         c(t(choiceMatrix[, -1])))
+  
+  #Remove choices wherein the agent doesn't fall within the chosen's preference window
+  choiceMatrix[,2] <- ifelse(abs(agents$trait[choiceMatrix[,1]] - agents$prefGene1[choiceMatrix[,2]]) <= agents$windowGene1[choiceMatrix[,2]],
+                             choiceMatrix[,2],NA)
   
   #Remove NAs
   choiceMatrix <- choiceMatrix[complete.cases(choiceMatrix), ]
@@ -260,6 +264,7 @@ foreach(p = 1:populations) %dopar% {
     
     #Load in the agent population
     agents <- agentGenerate(p)
+
     
     #Determine starting population size
     popSize <- nrow(agents)
@@ -274,7 +279,10 @@ foreach(p = 1:populations) %dopar% {
     
     #Loop through generations
     for (g in 1:generations) {
-
+      
+      #Assign agents a random preference value
+      agents$trait<-runif(nrow(agents),0,1)
+      
       #Pre-reproductive mortality
       #Some agents die before getting to reproduce by virtue of their investment in mate competition
       agents <- agents[which(rbinom(
@@ -349,8 +357,8 @@ foreach(p = 1:populations) %dopar% {
       
 
       #Identify the mate values of each offspring's parents
-      mv <- (1 - abs(agents$traitGene1[match(offspring$parent1ID, agents$ID)] - .7)) +
-        (1 - abs(agents$traitGene1[match(offspring$parent2ID, agents$ID)] - .7))
+      mv <- (1 - abs(agents$trait[match(offspring$parent1ID, agents$ID)] - .7)) +
+        (1 - abs(agents$trait[match(offspring$parent2ID, agents$ID)] - .7))
       
       #Sort offspring by parent MVs
       offspring<-offspring[order(mv,decreasing=T),]
