@@ -17,7 +17,7 @@ generations<-20
 
 
 #Population size
-popSize<-500
+popSize<-300
 
 
 
