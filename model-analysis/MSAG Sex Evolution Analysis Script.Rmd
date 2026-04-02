@@ -24,7 +24,7 @@ data$bigOrSmall<-ifelse(data$gameteSizeGene1>median(data$gameteSizeGene1),"big",
 
 ```{r analysis}
 
-plotData<-data[data$generation %in% seq(0,50,25), ]
+plotData<-data[data$generation %in% seq(0,30,15), ]
 
 
 ```

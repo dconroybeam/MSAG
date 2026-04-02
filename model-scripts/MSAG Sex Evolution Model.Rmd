@@ -13,7 +13,7 @@ populations<-which(grepl("SEL HI",list.files("model-outputs/sexrepro-evolution/"
 
 
 #Number of generations
-generations<-50
+generations<-30
 
 
 
@@ -33,7 +33,7 @@ maxGametes<-200
 
 
 #Population size
-popSize<-200
+popSize<-300
 
 
 

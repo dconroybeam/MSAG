@@ -23,7 +23,7 @@ modelLoops<-length(populations)/numEnv
 
 
 #Set desired population size
-popSize<-200
+popSize<-300
 
 
 

@@ -33,7 +33,7 @@ maxGametes<-200
 
 
 #Population size
-popSize<-200
+popSize<-300
 
 
 
@@ -297,7 +297,7 @@ foreach(p = populations) %dopar% {
   }
   
   #Create a unique filename and filepath
-  path <- "model-outputs/sex-evolution/MSAG Sex Evolution Population CYTO "
+  path <- "model-outputs/sex-evolution-cyto/MSAG Sex Evolution Population CYTO "
   
   format <- ".csv"
   date <- format(Sys.time(), format = "%Y%m%d %H%M")
