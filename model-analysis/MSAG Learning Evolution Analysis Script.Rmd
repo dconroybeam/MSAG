@@ -22,14 +22,28 @@ data<-do.call("rbind",data)
 
 
 #Create a dataframe for plotting average gamete size and fusion target over time
-plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$environmentPredict))))
-plotData$predict<-rep(sort(unique(data$environmentPredict)),each=length(unique(data$generation)))
-plotData$mean<-c(tapply(data$learningGene1,list(data$generation,data$environmentPredict),mean))
+plotData<-data.frame("generation"=rep(sort(unique(data$generation)),length(unique(data$environmentPredict))*3))
+
+plotData$strategy<-rep(c("Genetically Encoded","Model Free Learning","Model Based Learning"),each=length(unique(data$generation))*length(unique(data$environmentPredict)))
+plotData$predict<-rep(sort(unique(data$environmentPredict)),each=length(unique(data$generation)),times=3)
+
+plotData$mean<-c(sapply(0:2,function(x) c(tapply(data$learningGene1==x,list(data$generation,data$environmentPredict),mean))))
 
 #Compute CIs on gamete sizes
-plotData$lci<-c(tapply(data$learningGene1,list(data$generation,data$environmentPredict),function(x) mean(x)-sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
-plotData$uci<-c(tapply(data$learningGene1,list(data$generation,data$environmentPredict),function(x) mean(x)+sd(x)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)))
 
+plotData$lci<-c(sapply(0:2,function(x) c(tapply(data$learningGene1==x,list(data$generation,data$environmentPredict),function(y)
+  mean(y)-sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
+  ))))
+
+plotData$uci<-c(sapply(0:2,function(x) c(tapply(data$learningGene1==x,list(data$generation,data$environmentPredict),function(y)
+  mean(y)+sd(y)/sqrt(max(data$modelLoop))*qt(.975,max(data$modelLoop)-1)
+  ))))
+
+plotData$lci[plotData$lci<0]<-0
+plotData$uci[plotData$uci>1]<-1
+
+
+plotData$predict<-factor(ifelse(plotData$predict==0,"Low Env. Predictability","High Env. Predictability"),levels=c("High Env. Predictability","Low Env. Predictability"))
 
 ```
 
@@ -37,27 +51,16 @@ plotData$uci<-c(tapply(data$learningGene1,list(data$generation,data$environmentP
 
 ```{r plot}
 
-
-p0<-ggplot(data=plotData[plotData$predict==1,],
-           aes(x=generation,y=mean,color=as.factor(predict)))+
+p1<-ggplot(data=plotData,
+           aes(x=generation,y=mean,color=as.factor(strategy)))+
   geom_errorbar(aes(ymin=lci,ymax=uci))+
-  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment\nPredictability")+
-  scale_color_manual(values=c("firebrick3"))+
+  labs(x="Generation",y="Proportion Agents\n w/ Learning Strategy",color="Learning Strategy")+
+  facet_wrap(~predict)+
+  scale_color_manual(values=c("dodgerblue3","firebrick3","orange"))+
   geom_point(size=2)+
   geom_line(linewidth=1)+
   coord_cartesian(ylim=c(0,1))+
   theme_grey(base_size=20)
-
-p1<-ggplot(data=plotData,
-           aes(x=generation,y=mean,color=as.factor(predict)))+
-  geom_errorbar(aes(ymin=lci,ymax=uci))+
-  labs(x="Generation",y="Proportion Agents\n w/ Learning Psychology",color="Environment\nPredictability")+
-  scale_color_manual(values=c("dodgerblue3","firebrick3"))+
-  geom_point(size=2)+
-  geom_line(linewidth=1)+
-  coord_cartesian(ylim=c(0,1))+
-  theme_grey(base_size=20)+
-  theme(legend.position="none")
 
 
 
