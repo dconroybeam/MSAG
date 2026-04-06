@@ -13,7 +13,7 @@ populations<-which(grepl("SEL HI",list.files("model-outputs/sexrepro-evolution/"
 
 
 #Number of generations
-generations<-20
+generations<-15
 
 
 
@@ -269,11 +269,15 @@ foreach(p = populations) %dopar% {
   #Create a dataframe to store agents
   data<-cbind("modelLoop"=p,"generation"=0,agents)
   
+  start<-proc.time()
   #Loop through generations
   for (g in 1:generations) {
     
+    end<-proc.time()-start
     print(g)
     hist(agents$gameteSizeGene1)
+    print(end)
+    start<-proc.time()
     
     
     #Generate gametes for each agent

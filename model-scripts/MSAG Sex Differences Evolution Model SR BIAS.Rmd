@@ -291,6 +291,7 @@ foreach(p = 1:populations) %dopar% {
         
       )))
     
+    #Limit male reproduction to 4 mating opportunities/lifetime to represent, e.g., limited mating due to dispersal of females
     gametes<-sapply(1:length(gametes),function(x)
       if(gametes[[x]][1,2]<3){
         gametes[[x]][sample(1:nrow(gametes[[x]]),min(c(nrow(gametes[[x]]),4))),]
