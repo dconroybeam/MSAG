@@ -1,5 +1,5 @@
 ```{r packages}
-
+library(doParallel)
 ```
 
 
@@ -349,16 +349,16 @@ environmentSetup<-function(environment){
   #Generate an environment in which optimal foraging policy is either not sex-differentiated (e=1), is sex-differentiated (e=2), or is sex-differentiated but multiple within-sex optima (e=3)
   if (environment==1) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
-    foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
-    foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
-    foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
-    foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
-  } else if (environment==2) {
-    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- c(0,rep(0,length(actions[-(1:2)])))
     foragingVariables$risk <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
     foragingVariables$danger <- rep(c(0,rep(1,length(actions[-1])/2-1)),2)
     foragingVariables$childCompat <- rep(1,length(actions[-1]))
+  } else if (environment==2) {
+    foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
+    foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
+    foragingVariables$danger <- c(1,rep(0,length(actions[-(1:2)])))
+    foragingVariables$childCompat <- rep(c(0,1),each=length(actions[-1])/2)
   } else {
     foragingVariables$productivity <- c(1,rep(0,length(actions[-1])/2-1),rep(1,2),rep(0,length(actions[-1])/2-2))
     foragingVariables$practice <- c(1,rep(0,length(actions[-1])/2-1),rep(1,2),rep(0,length(actions[-1])/2-2))
@@ -417,7 +417,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                   yield,
                   ifelse(foragingVariables$practice[foragingVariables==chosenActions[a]]==0,
                          yield,
-                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/3))))
+                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/6))))
     
 
     #Determine the result of that transition
@@ -427,81 +427,6 @@ transitions<-function(agents,chosenActions,tMatrices){
   
   #Output result tuples
   return(result)
-}
-
-
-
-
-#Reward Calculation#
-#A function for determining agents' reward given their states and actions
-rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
-  
-  #Create a dataframe reflecting the new household states
-  newStates<-hhStates
-  
-  #Create a dataframe reflecting observations of the agents' outcomes (for social learning)
-  observations<-actionResults
-  
-  #Add agent gamete size, household state, and reward columns to observations
-  observations$gameteSize<-agents$gameteSizeGene1[match(observations$agentID,agents$ID)]
-  observations$starthhState<-agents$hhState[match(observations$agentID,agents$ID)]
-  observations$newhhState<-0
-  observations$reward<-0
-  
-  #Rearrange
-  observations<-observations[,c(1:2,7:9,3:6,10)]
-  
-  #Loop through action results and update household states based on results
-  for(a in 1:nrow(agents)){
-    
-    #Determine new household states
-    newStates[newStates$hh==agents$hh[a],
-          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),
-                        3,4))]<-newStates[newStates$hh==agents$hh[a],
-          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),3,4))] + 
-      actionResults$yield[match(agents$ID[a],actionResults$agentID)]
-    
-    #Determine the new household state in light of the agent's action
-    newhhstate<-resample(which(newStates[newStates$hh == agents$hh[a], -1] == min(newStates[newStates$hh == agents$hh[a], -1])), 1)
-    
-    #Store this new household state
-    observations$newhhState[match(agents$ID[a],observations$agentID)]<-newhhstate
-    
-    #Determine what resource the agent's action generated
-    actionResource<-ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)]=="parent",1,
-                           ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),2,3))
-    
-    #Calculate the reward this action should generate
-    #Actions that generate any resource other than the one the household has the least of  results in decreased reward
-    agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
-                        actionResults$yield[match(agents$ID[a],actionResults$agentID)],
-                        actionResults$yield[match(agents$ID[a],actionResults$agentID)]*.25)
-    
-    #Update observations with reward
-    observations$reward[match(agents$ID[a],observations$agentID)]<-agentReward
-    
-
-    #Update agents' total rewards
-    agents$reward[a]<-agents$reward[a]+agentReward
-    
-    #Update agents' action history
-    agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]<-agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]+1
-    
-    #Determine the action-value estimates for the current state-action pair and the best state-action pair in the new state
-    currentStateQ<-q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]]
-    newStateQ<-max(q[[as.character(agents$ID[a])]][[newhhstate]][, actionResults$newState[match(agents$ID[a], actionResults$agentID)]])
-    
-    #Implements action-value update using Q-learning
-    q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
-      currentStateQ + learningRate * (agentReward + (discount*newStateQ - currentStateQ))
-  }
-  
-  #Update household states
-  hhStates<-newStates
-  
-  return(list(agents,q,hhStates,observations))
 }
 
 
@@ -529,13 +454,82 @@ planGenerate<-function(model){
 }
 
 
-#Planning#
-#A function for agent planning
-#Agents train their action-value function by mentally simulating prior actions sampled from their environment model
-plan <- function(agents, observations, models, q) {
-  #Loop through agents
+
+#Reward Calculation#
+#A function for determining agents' reward given their states and actions
+rewardUpdate <- function(agents,
+                         q,
+                         models,
+                         hhStates,
+                         actionResults,
+                         foragingVariables) {
+  #Create a dataframe reflecting the new household states
+  newStates <- hhStates
+  
+  #Create a dataframe reflecting observations of the agents' outcomes (for social learning)
+  observations <- actionResults
+  
+  #Add agent gamete size, household state, and reward columns to observations
+  observations$gameteSize <- agents$gameteSizeGene1[match(observations$agentID, agents$ID)]
+  observations$starthhState <- agents$hhState[match(observations$agentID, agents$ID)]
+  observations$newhhState <- 0
+  observations$reward <- 0
+  
+  #Rearrange
+  observations <- observations[, c(1:2, 7:9, 3:6, 10)]
+  
+  #Loop through action results and update household states based on results
   for (a in 1:nrow(agents)) {
+    #Determine new household states
+    newStates[newStates$hh == agents$hh[a], ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                                                     "parent", 2, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 3, 4))] <-
+      newStates[newStates$hh == agents$hh[a], ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                                                       "parent", 2, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 3, 4))] +
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)]
+    
+    #Determine the new household state in light of the agent's action
+    newhhstate <- resample(which(newStates[newStates$hh == agents$hh[a], -1] == min(newStates[newStates$hh == agents$hh[a], -1])), 1)
+    
+    #Store this new household state
+    observations$newhhState[match(agents$ID[a], observations$agentID)] <-
+      newhhstate
+    
+    #Determine what resource the agent's action generated
+    actionResource <- ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                               "parent", 1, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 2, 3))
+    
+    #Calculate the reward this action should generate
+    #Actions that generate any resource other than the one the household has the least of  results in decreased reward
+    agentReward <- ifelse(
+      actionResource == agents$hhState[agents$ID == actionResults$agentID[a]],
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)],
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)] *
+        .5
+    )
+    
+    #Update observations with reward
+    observations$reward[match(agents$ID[a], observations$agentID)] <- agentReward
+    
+    
+    #Update agents' total rewards
+    agents$reward[a] <- agents$reward[a] + agentReward
+    
+    #Update agents' action history
+    agents[a, as.character(paste0(actionResults$action[match(agents$ID[a], actionResults$agentID)], "Hist"))] <-
+      agents[a, as.character(paste0(actionResults$action[match(agents$ID[a], actionResults$agentID)], "Hist"))] +
+      1
+    
+    #Determine the action-value estimates for the current state-action pair and the best state-action pair in the new state
+    currentStateQ <- q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]]
+    newStateQ <- max(q[[as.character(agents$ID[a])]][[newhhstate]][, actionResults$newState[match(agents$ID[a], actionResults$agentID)]])
+    
+    #Implements action-value update using Q-learning
+    q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
+      currentStateQ + learningRate * (agentReward + (discount * newStateQ - currentStateQ))
+    
+    #If the agents engage in model-based RL...
     if (agents$learningGene1[a] == 2) {
+      
       #If the agent has no model...
       if (is.na(models[[as.character(agents$ID[a])]])[1]) {
         #Create a blank dataframe to store the agent's model
@@ -543,40 +537,43 @@ plan <- function(agents, observations, models, q) {
       }
       
       #If the model has become too large...
-      if(nrow(models[[as.character(agents$ID[a])]])>=100){
+      if (nrow(models[[as.character(agents$ID[a])]]) >= 100) {
         #Remove the oldest memory
         #This prevents the model information from becoming stale for practice-dependent actions
-        models[[as.character(agents$ID[a])]]<-models[[as.character(agents$ID[a])]][-1,]
+        models[[as.character(agents$ID[a])]] <- models[[as.character(agents$ID[a])]][-1, ]
         
       }
       
       #Update agent's model with their behavior from this round
-      models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[observations$agentID == agents$ID[a], ])
+      models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
       
-      #Generate observations to plan from
-      simObs<-t(sapply(1:planningLoops,function(x) planGenerate(models[[as.character(agents$ID[a])]])))
-      
-      #Loop through plan steps
-      for(p in 1:nrow(simObs)){
-
-      #Identify the action-value function for the start state
-      startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p,]$starthhState]][simObs[p,]$action, simObs[p,]$startState]
-      
-      #Identify the expected action-value from choosing the most rewarding action in state S'
-      newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p,]$newhhState]][, simObs[p,]$newState])
-      
-      #Implements action-value update based on the simObs[p,] using q-learning
-      q[[as.character(agents$ID[a])]][[simObs[p,]$starthhState]][simObs[p,]$action, simObs[p,]$startState] <-
-        startStateQ + learningRate * (simObs[p,]$reward + (discount * newStateQ - startStateQ))
+      #Every 5 rounds...
+        if ((l %% 5) == 0) {
+        #Generate observations to plan from
+        simObs <- t(sapply(1:planningLoops, function(x)
+          planGenerate(models[[as.character(agents$ID[a])]])))
+        
+        #Loop through plan steps
+        for (p in 1:nrow(simObs)) {
+          #Identify the action-value function for the start state
+          startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
+          
+          #Identify the expected action-value from choosing the most rewarding action in state S'
+          newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
+          
+          #Implements action-value update based on the simObs[p,] using q-learning
+          q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+            startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
+        }
       }
-      
     }
   }
-  
-  return(list(models, q))
-  
+    
+    #Update household states
+    hhStates <- newStates
+    
+    return(list(agents, q, models, hhStates, observations))
 }
-
 
 
 ```
@@ -585,10 +582,15 @@ plan <- function(agents, observations, models, q) {
 
 ```{r modelStart}
 
+#Number of Cores#
+#Number of cores to use for the parallel loop
+clust<-makeCluster(length(environments))
+registerDoParallel(clust)
+
 #Loop through model loops
 for (p in populations) {
   
-  for (e in environments) {
+  foreach(e = environments) %dopar% {
     
     ###Environment Setup###
     
@@ -641,6 +643,9 @@ for (p in populations) {
       #And remove their action value functions
       q <- q[names(q) %in% agents$ID]
       
+      #And models
+      models<-models[names(models) %in% agents$ID]
+      
       
       #Household states:
       
@@ -670,7 +675,7 @@ for (p in populations) {
         actionResults <- transitions(agents, chosenActions, tMatrices)
         
         #Update reward, action values, and household states
-        reward <- rewardUpdate(agents, q, hhStates, actionResults, foragingVariables)
+        reward <- rewardUpdate(agents, q, models, hhStates, actionResults, foragingVariables)
         
         #Update agents based on these reward updates
         agents <- reward[[1]]
@@ -678,8 +683,10 @@ for (p in populations) {
         #And action value functions based on whether agents learn or not
         q <- reward[[2]]
         
+        models <- reward[[3]]
+        
         #And household states
-        hhStates <- reward[[3]]
+        hhStates <- reward[[4]]
         
         #Update agent states
         agents$state <- actionResults$newState[match(agents$ID, actionResults$agentID)]
@@ -688,15 +695,6 @@ for (p in populations) {
         agents$hhState <- sapply(agents$hh, function(x)
           resample(which(hhStates[hhStates$hh == x, -1] == min(hhStates[hhStates$hh ==
                                                                           x, -1])), 1))
-        
-        #Have agents plan based on a single simulated action drawn from their environment models
-        agentPlanning<-plan(agents,reward[[4]],models,q)
-        
-        #Overwrite agent models with updated models
-        models<-agentPlanning[[1]]
-        
-        #And overwrite agent action-value functions with updated functions
-        q<-agentPlanning[[2]]
         
       }
       

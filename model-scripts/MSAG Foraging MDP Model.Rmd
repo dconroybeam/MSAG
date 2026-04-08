@@ -474,7 +474,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                   yield,
                   ifelse(foragingVariables$practice[foragingVariables==chosenActions[a]]==0,
                          yield,
-                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((lifeSpan)/3))))
+                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/6))))
     
 
     #Determine the result of that transition
@@ -561,7 +561,7 @@ rewardUpdate <- function(agents,
       actionResource == agents$hhState[agents$ID == actionResults$agentID[a]],
       actionResults$yield[match(agents$ID[a], actionResults$agentID)],
       actionResults$yield[match(agents$ID[a], actionResults$agentID)] *
-        .25
+        .5
     )
     
     #Update observations with reward

@@ -23,7 +23,7 @@ modelLoops<-length(populations)/numEnv
 
 
 #Set desired population size
-popSize <- 500
+popSize <- 200
 
 
 
@@ -40,7 +40,7 @@ mutationRate<-.05
 
 #Selection Strength#
 #Strength of selection on productivity
-selStrength<-5
+selStrength<-10
 
 
 
@@ -101,6 +101,11 @@ envChange<-c(1,0)
 #Observations#
 #How many observations social learning agents have to pre-train their value functions
 numObservations<-100
+
+
+
+#Number of loops for planning agents to iterate
+planningLoops<-20
 
 ```
 
@@ -171,15 +176,16 @@ agentGenerate <- function(m, actions, states) {
           dimnames = list(actions, states)
         )))
   )
-
+  
+  #Create matrices for learned environment models
+  models<-lapply(1:length(agents), function(x)
+    lapply(1:nrow(agents[[x]]),function(y) NA))
+  
   #Label action value matrices
   for(env in 1:length(agents)){
     names(q[[env]])<-agents[[env]]$ID
+    names(models[[env]])<-agents[[env]]$ID
   }
-  
-  #Create matrices for learned theories about the optimal policy
-  #Learned from social observations
-  theories<-list(q,q)
   
   #Output agents
   return(list(agents,q, theories))
@@ -209,24 +215,41 @@ actionSelection<-function(agents,q,parentQs){
   #Loop through agents....
   chosenActions <- sapply(1:nrow(agents), function(x)
     
-    #With probability proportional to parents' policing genes
-    if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
-      #Either choose an action according to parents' policy
+    #With probability epsilon...
+    if(rbinom(1, 1, epsilonProb)){
+      
+      #Either choose an action according to parents' policy proportional to parents' policing genes
+      if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
         actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+      } else {
+      #Or do a random action
+        sample(actions, 1)
+      }
     } else {
-      #Or do epsilon greedy according to child's policy
-      
-      #On epsilonProb % of trials...
-      if (rbinom(1, 1, epsilonProb)) {
-        #Choose an action randomly
-          sample(actions, 1)
-        } else{
-        #Or pick which ever action has maximum action value (ties broken randomly)
+        #Otherwise pick which ever action has maximum action value (ties broken randomly)
         actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-      }
     }
+
+    # #With probability proportional to parents' policing genes
+    # if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
+    #   #Either choose an action according to parents' policy
+    #     actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+    #                              max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+    # } else {
+    #   #Or do epsilon greedy according to child's policy
+    #   
+    #   #On epsilonProb % of trials...
+    #   if (rbinom(1, 1, epsilonProb)) {
+    #     #Choose an action randomly
+    #       sample(actions, 1)
+    #     } else{
+    #     #Or pick which ever action has maximum action value (ties broken randomly)
+    #     actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+    #                              max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+    #   }
+    # }
   )
       
   #Output the actions
@@ -257,16 +280,20 @@ matrixSetup<-function(action, states, foragingVariables){
     transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")), colnames(transMatrix[[1]]) ==
                            "parenting"] <- 1
     
-    #For states with injury, set transition to parenting to .8
-    transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")), colnames(transMatrix[[1]]) ==
+    #For the injury state, set transition to parenting to .8
+    transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf")), colnames(transMatrix[[1]]) ==
                            "parenting"] <- .8
+    
+    #For the child injury state, set transition to parenting to .25
+    transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injuryChild")), colnames(transMatrix[[1]]) ==
+                           "parenting"] <- .25
     
     #Set transition back to injury states to .2 for agents who start injured
     transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf")), (colnames(transMatrix[[1]]) %in% c("injurySelf"))] <-
       .2
     
     transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injuryChild")), (colnames(transMatrix[[1]]) %in% c("injuryChild"))] <-
-      .2
+      .75
     
     #Return of successful parenting is always 1
     transMatrix[[2]][, colnames(transMatrix[[2]]) == "parenting"]<-1
@@ -288,18 +315,27 @@ matrixSetup<-function(action, states, foragingVariables){
       #Set the probability of failure
       transMatrix[[1]][,colnames(transMatrix[[1]]) == "unsuccessful"] <- .5
       
-      #If the agent is injured, decrease the probability of success by 80%
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")),
-                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful"))]<-
-      (transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")),
-                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful"))])*.8
-      
-      #And set the probability of transitioning back to that injured state at .8
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf")),
+      #If the agent is injured, set the probability of transitioning back to that injured state at .2
+      transMatrix[[1]]["injurySelf",
                        (colnames(transMatrix[[1]]) %in% c("injurySelf"))]<-.2
       
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injuryChild")),
-                       (colnames(transMatrix[[1]]) %in% c("injuryChild"))]<-.2
+      #And if the agent's child is inured set the probability of transitioning back to that injured state at .75
+      transMatrix[[1]]["injuryChild",
+                       (colnames(transMatrix[[1]]) %in% c("injuryChild"))]<-.75
+      
+      #And decrease the probability of success by 20% for injured agents
+      transMatrix[[1]]["injurySelf",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injuryChild"))]<-
+      (transMatrix[[1]]["injurySelf",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injuryChild"))])*.8
+      
+      #And by 75% for injured children
+      transMatrix[[1]]["injuryChild",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injurySelf"))]<-
+      (transMatrix[[1]]["injuryChild",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injurySelf"))])*.25
+      
+
       
     } else {
       
@@ -311,17 +347,25 @@ matrixSetup<-function(action, states, foragingVariables){
       #And the probability of failure to 0
       transMatrix[[1]][,colnames(transMatrix[[1]]) == "unsuccessful"] <- 0
       
-      #Except if the agent is injured, then the probability of success is 80% and the probability of remaining in the injured state is 20%
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")),
-                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful"))]<-
-      (transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")),
-                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful"))])*.8
-      
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injurySelf")),
+      #If the agent is injured, set the probability of transitioning back to that injured state at .2
+      transMatrix[[1]]["injurySelf",
                        (colnames(transMatrix[[1]]) %in% c("injurySelf"))]<-.2
       
-      transMatrix[[1]][(rownames(transMatrix[[1]]) %in% c("injuryChild")),
-                       (colnames(transMatrix[[1]]) %in% c("injuryChild"))]<-.2
+      #And if the agent's child is inured set the probability of transitioning back to that injured state at .5
+      transMatrix[[1]]["injuryChild",
+                       (colnames(transMatrix[[1]]) %in% c("injuryChild"))]<-.75
+      
+      #And decrease the probability of success by 20% for injured agents
+      transMatrix[[1]]["injurySelf",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injuryChild"))]<-
+      (transMatrix[[1]]["injurySelf",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injuryChild"))])*.8
+      
+      #And by 70% for injured children
+      transMatrix[[1]]["injuryChild",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injurySelf"))]<-
+      (transMatrix[[1]]["injuryChild",
+                     (colnames(transMatrix[[1]]) %in% c("successful", "unsuccessful","injurySelf"))])*.25
 
     }
     
@@ -329,12 +373,12 @@ matrixSetup<-function(action, states, foragingVariables){
     if(foragingVariables$danger[foragingVariables$foodItem==action] == 1){
       
       #Set the probability of transitioning to the injured state to 10%
-      transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")), colnames(transMatrix[[1]]) ==
+      transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf")), colnames(transMatrix[[1]]) ==
                            "injurySelf"] <- .1
       
       #And decrease the probability of getting into the success states
-      transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")), colnames(transMatrix[[1]]) !=
-                           "injurySelf"] <- transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf", "injuryChild")), colnames(transMatrix[[1]]) !=
+      transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf")), colnames(transMatrix[[1]]) !=
+                           "injurySelf"] <- transMatrix[[1]][!(rownames(transMatrix[[1]]) %in% c("injurySelf")), colnames(transMatrix[[1]]) !=
                            "injurySelf"]*.9
     }
     
@@ -342,12 +386,12 @@ matrixSetup<-function(action, states, foragingVariables){
     #If the foraging that food item is not compatible with child care...
     if (foragingVariables$childCompat[foragingVariables$foodItem==action] == 0) {
       
-      #Set probability of injury to half the probability of succeeding or failing
-      transMatrix[[1]][1, "injuryChild"] <- sum(transMatrix[[1]][1, c("successful", "unsuccessful")] *
+      #Set probability of injury to half the probability of succeeding, failing, or becoming injured
+      transMatrix[[1]][1, "injuryChild"] <- sum(transMatrix[[1]][1, colnames(transMatrix[[1]]) != ("injuryChild")] *
                                                   .75)
       
-      #And decrease the probability of succeeding or failing
-      transMatrix[[1]][1, c("successful", "unsuccessful")] <- transMatrix[[1]][1, c("successful", "unsuccessful")] *
+      #And decrease the probability of the other states
+      transMatrix[[1]][1, colnames(transMatrix[[1]]) != ("injuryChild")] <- transMatrix[[1]][1, colnames(transMatrix[[1]]) != ("injuryChild")] *
         .25
     }
     
@@ -381,7 +425,7 @@ environmentSetup<-function(){
                                 "childCompat"=0)
   
   #Randomly generate an environment in which optimal foraging policy is either sex-differentiated or not
-  if (rbinom(1, 1, .5)) {
+  if (rbinom(1, 1, .8)) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
@@ -438,7 +482,7 @@ transitions<-function(agents,chosenActions,tMatrices){
     #To represent minimum obligatory parental investment
     effectiveState<-ifelse(agents$gameteSizeGene1[a]<3,
                            agents$state[a],
-                           ifelse(rbinom(1,1,.5),
+                           ifelse(rbinom(1,1,.75),
                                   "parenting",
                                   agents$state[a]))
     
@@ -455,7 +499,7 @@ transitions<-function(agents,chosenActions,tMatrices){
                   yield,
                   ifelse(foragingVariables$practice[foragingVariables==chosenActions[a]]==0,
                          yield,
-                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/3))))
+                         yield*(1*log(agents[a,as.character(paste0(chosenActions[[a]],"Hist"))]+1)/log((1/epsilonDecay)/6))))
     
 
     #Determine the result of that transition
@@ -469,99 +513,219 @@ transitions<-function(agents,chosenActions,tMatrices){
 
 
 
-#Social Learning#
-#A function for learning a policy from observations rather than personal experiences
-socialLearn<-function(theory,observations){
+#Reward Calculation#
+#A function for determining agents' reward given their states and actions
+rewardUpdate <- function(agents,
+                         q,
+                         models,
+                         hhStates,
+                         actionResults,
+                         foragingVariables) {
+  #Create a dataframe reflecting the new household states
+  newStates <- hhStates
   
-  #Randomly scramble the order of observations
-  observations<-observations[sample(1:nrow(observations)),]
+  #Create a dataframe reflecting observations of the agents' outcomes (for social learning)
+  observations <- actionResults
   
-  #Loop through observations
-  for(o in 1:nrow(observations)){
+  #Add agent gamete size, household state, and reward columns to observations
+  observations$gameteSize <- agents$gameteSizeGene1[match(observations$agentID, agents$ID)]
+  observations$starthhState <- agents$hhState[match(observations$agentID, agents$ID)]
+  observations$newhhState <- 0
+  observations$reward <- 0
+  
+  #Rearrange
+  observations <- observations[, c(1:2, 7:9, 3:6, 10)]
+  
+  #Loop through action results and update household states based on results
+  for (a in 1:nrow(agents)) {
+    #Determine new household states
+    newStates[newStates$hh == agents$hh[a], ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                                                     "parent", 2, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 3, 4))] <-
+      newStates[newStates$hh == agents$hh[a], ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                                                       "parent", 2, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 3, 4))] +
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)]
     
-    #Pull out the focal observation
-    observation<-observations[o,]
+    #Determine the new household state in light of the agent's action
+    newhhstate <- resample(which(newStates[newStates$hh == agents$hh[a], -1] == min(newStates[newStates$hh == agents$hh[a], -1])), 1)
     
-    #Identify the action-value function for the start state
-    startStateQ<-theory[[observation$hhState]][observation$action, observation$startState]
+    #Store this new household state
+    observations$newhhState[match(agents$ID[a], observations$agentID)] <-
+      newhhstate
     
-    #Identify the expected action-value from choosing the most rewarding action in state S'
-    newStateQ<-max(theory[[observation$hhState]][,observation$newState])
+    #Determine what resource the agent's action generated
+    actionResource <- ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)] ==
+                               "parent", 1, ifelse(grepl("meat.", actionResults$action[match(agents$ID[a], actionResults$agentID)]), 2, 3))
     
-    #Implements action-value update based on the observation using theory-learning
-    theory[[observation$hhState]][observation$action, observation$startState] <-
-      startStateQ + learningRate * (observation$reward + (discount*newStateQ - startStateQ))
+    #Calculate the reward this action should generate
+    #Actions that generate any resource other than the one the household has the least of  results in decreased reward
+    agentReward <- ifelse(
+      actionResource == agents$hhState[agents$ID == actionResults$agentID[a]],
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)],
+      actionResults$yield[match(agents$ID[a], actionResults$agentID)] *
+        .5
+    )
+    
+    #Update observations with reward
+    observations$reward[match(agents$ID[a], observations$agentID)] <- agentReward
+    
+    
+    #Update agents' total rewards
+    agents$reward[a] <- agents$reward[a] + agentReward
+    
+    #Update agents' action history
+    agents[a, as.character(paste0(actionResults$action[match(agents$ID[a], actionResults$agentID)], "Hist"))] <-
+      agents[a, as.character(paste0(actionResults$action[match(agents$ID[a], actionResults$agentID)], "Hist"))] +
+      1
+    
+    #Determine the action-value estimates for the current state-action pair and the best state-action pair in the new state
+    currentStateQ <- q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]]
+    newStateQ <- max(q[[as.character(agents$ID[a])]][[newhhstate]][, actionResults$newState[match(agents$ID[a], actionResults$agentID)]])
+    
+    #Implements action-value update using Q-learning
+    q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
+      currentStateQ + learningRate * (agentReward + (discount * newStateQ - currentStateQ))
+
+      #If the agent has no model...
+      if (is.na(models[[as.character(agents$ID[a])]])[1]) {
+        #Create a blank dataframe to store the agent's model
+        models[[as.character(agents$ID[a])]] <- observations[0, ]
+      }
+      
+      #If the model has become too large...
+      if (nrow(models[[as.character(agents$ID[a])]]) >= 100) {
+        #Remove the oldest memory
+        #This prevents the model information from becoming stale for practice-dependent actions
+        models[[as.character(agents$ID[a])]] <- models[[as.character(agents$ID[a])]][-1, ]
+        
+      }
+      
+      #Update agent's model with their behavior from this round
+      models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
+      
+      #Every 5 rounds...
+      if ((l %% 10) == 0) {
+      #Generate observations to plan from
+      simObs <- t(sapply(1:planningLoops, function(x)
+        planGenerate(models[[as.character(agents$ID[a])]])))
+      
+      #Loop through plan steps
+      for (p in 1:nrow(simObs)) {
+        #Identify the action-value function for the start state
+        startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
+        
+        #Identify the expected action-value from choosing the most rewarding action in state S'
+        newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
+        
+        #Implements action-value update based on the simObs[p,] using q-learning
+        q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+          startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
+      }
+    }
   }
-  
-  return(theory)
-  
+    
+    #Update household states
+    hhStates <- newStates
+    
+    return(list(agents, q, models, hhStates, observations))
 }
 
 
 
-#Reward Calculation#
-#A function for determining agents' reward given their states and actions
-rewardUpdate<-function(agents,q,hhStates,actionResults,foragingVariables){
+#A function for updating q based on an environment model
+planGenerate<-function(model){
   
-  #Create a dataframe reflecting the new household states
-  newStates<-hhStates
+  #Pick all prior trials that correspond to a randomly chosen starting household state
+  simObs <- model[model$starthhState == resample(unique(model$starthhState), 1), ]
   
-  #Create a dataframe reflecting observations of the agents' outcomes (for social learning)
-  observations<-actionResults
+  #Pick all prior trials that correspond to a randomly chosen start state within that household state
+  simObs <- simObs[simObs$startState == sample(unique(simObs$startState), 1), ]
   
-  #Add agent gamete size, household state, and reward columns to observations
-  observations$gameteSize<-agents$gameteSizeGene1[match(observations$agentID,agents$ID)]
-  observations$hhState<-agents$hhState[match(observations$agentID,agents$ID)]
-  observations$reward<-0
+  #Pick all prior trials that correspond to a randomly chosen prior action in that state
+  simObs <- simObs[simObs$action == sample(unique(simObs$action), 1), ]
   
-  #Rearrange
-  observations<-observations[,c(1:2,7:8,3:6,9)]
-  
-  #Loop through action results and update household states based on results
-  for(a in 1:nrow(agents)){
-    
-    #Determine new household states
-    newStates[newStates$hh==agents$hh[a],
-          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),
-                        3,4))]<-newStates[newStates$hh==agents$hh[a],
-          ifelse(actionResults$action[match(agents$ID[a], actionResults$agentID)]=="parent",2,
-                 ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),3,4))] + 
-      actionResults$yield[match(agents$ID[a],actionResults$agentID)]
-    
-    #Determine what resource the agent's action generated
-    actionResource<-ifelse(actionResults$action[match(agents$ID[a],actionResults$agentID)]=="parent",1,
-                           ifelse(grepl("meat.",actionResults$action[match(agents$ID[a],actionResults$agentID)]),2,3))
-    
-    #Calculate the reward this action should generate
-    #Actions that generate any resource other than the one the household has the least of  results in decreased reward
-    agentReward<-ifelse(actionResource==agents$hhState[agents$ID==actionResults$agentID[a]],
-                        actionResults$yield[match(agents$ID[a],actionResults$agentID)],
-                        actionResults$yield[match(agents$ID[a],actionResults$agentID)]*.25)
-    
-    #Update observations with reward
-    observations$reward[match(agents$ID[a],observations$agentID)]<-agentReward
-    
-
-    #Update agents' total rewards
-    agents$reward[a]<-agents$reward[a]+agentReward
-    
-    #Update agents' action history
-    agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]<-agents[a,as.character(paste0(actionResults$action[match(agents$ID[a],actionResults$agentID)],"Hist"))]+1
-    
-    #Determine the action-value estimates for the current state-action pair and the best state-action pair in the new state
-    currentStateQ<-q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]]
-    newStateQ<-max(q[[as.character(agents$ID[a])]][[resample(which(newStates[newStates$hh == agents$hh[a], -1] == max(newStates[newStates$hh == agents$hh[a], -1])), 1)]][, actionResults$newState[match(agents$ID[a], actionResults$agentID)]])
-    
-    #Implements action-value update using Q-learning
-    q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
-      currentStateQ + learningRate * (agentReward + (discount*newStateQ - currentStateQ))
+  #Finally, if more than one prior trial remains...
+  if (nrow(simObs) > 1) {
+    #...pick one at random
+    simObs <- simObs[sample(1:nrow(simObs), 1), ]
   }
   
-  #Update household states
-  hhStates<-newStates
+  return(simObs)
   
-  return(list(agents,q,hhStates,observations))
+}
+
+
+#Planning#
+#A function for agent planning
+#Agents train their action-value function by mentally simulating prior actions sampled from their environment model
+plan <- function(agents, observations, models, q) {
+  #Loop through agents
+  for (a in 1:nrow(agents)) {
+    
+    #If the agent has no model...
+    if (is.na(models[[as.character(agents$ID[a])]])[1]) {
+      #Create a blank dataframe to store the agent's model
+      models[[as.character(agents$ID[a])]] <- observations[0, ]
+    }
+    
+    #If the model has become too large...
+    if(nrow(models[[as.character(agents$ID[a])]])>=100){
+      #Remove the oldest memory
+      #This prevents the model information from becoming stale for practice-dependent actions
+      models[[as.character(agents$ID[a])]]<-models[[as.character(agents$ID[a])]][-1,]
+
+    }
+    
+    #Update agent's model with their behavior from this round
+    models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[observations$agentID == agents$ID[a], ])
+    
+    #Generate observations to plan from
+    simObs <- t(sapply(1:planningLoops, function(x)
+      planGenerate(models[[as.character(agents$ID[a])]])))
+    
+    #Loop through plan steps
+    for (p in 1:nrow(simObs)) {
+      #Identify the action-value function for the start state
+      startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
+      
+      #Identify the expected action-value from choosing the most rewarding action in state S'
+      newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
+      
+      #Implements action-value update based on the simObs[p,] using q-learning
+      q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+        startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
+      
+    }
+  }
+  
+  return(list(models, q))
+  
+}
+
+
+#Social Learning#
+#A function for learning a policy from observations rather than personal experiences
+socialLearn<-function(q,model){
+  
+#Generate observations to plan from
+  simObs <- t(sapply(1:500, function(x)
+    planGenerate(model)))
+
+  #Loop through plan steps
+  for (p in 1:nrow(simObs)) {
+    #Identify the action-value function for the start state
+    startStateQ <- q[[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
+    
+    #Identify the expected action-value from choosing the most rewarding action in state S'
+    newStateQ <- max(q[[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
+    
+    #Implements action-value update based on the simObs[p,] using q-learning
+    q[[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+      startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
+    
+  }
+  
+  return(q)
+  
 }
 
 
@@ -704,7 +868,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
       parentQs <- q
       
       #Extract initial (uninformed) agent social theories
-      theories <- popGen[[3]]
+      models<- popGen[[3]]
       
       #Create a blank list for storing observations of agent behavior
       observations <- lapply(1:numEnv, function(x)
@@ -739,41 +903,23 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           
           #If at least one parent generation exists...
           if (g > 1) {
-            #Offspring agents learn folk theories of policy from observing adults
-            #They do so either with or without a theory that sex matters
-            theories[[v]] <- lapply(1:2, function(x)
-              #agents with no gender concept simply learn from all adults
-              lapply(1:nrow(agents[[v]]), function(y)
-                if (agents[[v]]$socialLearningGene1[y] < 2) {
-                  socialLearn(theories[[v]][[x]][[y]], observations[[v]][sample(1:nrow(observations[[v]]), numObservations), ])
-                } else {
-                  #agents with a gender concept separately learn from large- and small-gamete producers
-                  if (x == 1) {
-                    socialLearn(theories[[v]][[x]][[y]], observations[[v]][sample(which((
-                      observations[[v]]$gameteSize < 3
-                    )), numObservations /
-                      2) , ])
-                  } else {
-                    socialLearn(theories[[v]][[x]][[y]], observations[[v]][sample(which((
-                      observations[[v]]$gameteSize > 3
-                    )), numObservations /
-                      2), ])
-                  }
-                  
-                }))
-            
-            #Replace initial value function with folk theory for agents[[v]] that do social learning
-            q[[v]] <- lapply(1:length(q[[v]]), function(x)
-              if (agents[[v]]$socialLearningGene1[x] == 1) {
-                theories[[v]][[1]][[x]]
-              } else if (agents[[v]]$socialLearningGene1[x] == 2) {
-                theories[[v]][[ifelse(agents[[v]]$gameteSizeGene1[x] < 3, 1, 2)]][[x]]
-              } else {
-                q[[v]][[x]]
-              })
-            
-            #Relabel action-value functions
-            names(q[[v]]) <- agents[[v]]$ID
+            #Loop through agents...
+            for (a in 1:nrow(agents[[v]])) {
+              
+              #Start their model using only observations from same-sex agents
+              ssObservations <- observations[[v]]
+              ssObservations <- ssObservations[((ssObservations$gameteSize >
+                                                   3) == (agents[[v]]$gameteSizeGene1[a] > 3)), ]
+              ssObservations <- ssObservations[sample(1:nrow(ssObservations), min(c(
+                nrow(ssObservations), numObservations / 2
+              ))), ]
+              
+              models[[v]][[as.character(agents[[v]]$ID[a])]] <- ssObservations
+              
+              #And pre-train action-value function with these observations
+              q[[v]][[as.character(agents[[v]]$ID[a])]] <- socialLearn(q[[v]][[as.character(agents[[v]]$ID[a])]], models[[v]][[as.character(agents[[v]]$ID[a])]])
+              
+            }
           }
           
           #Mating:
@@ -804,6 +950,9 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           
           #And remove their action value functions
           q[[v]] <- q[[v]][names(q[[v]]) %in% agents[[v]]$ID]
+          
+          #And their models
+          models[[v]] <- models[[v]][names(models[[v]]) %in% agents[[v]]$ID]
           
           
           
@@ -839,6 +988,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
             #Update reward, action values, and household states
             reward <- rewardUpdate(agents[[v]],
                                    q[[v]],
+                                   models[[v]],
                                    hhStates,
                                    actionResults,
                                    foragingVariables)
@@ -849,8 +999,11 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
             #And action value functions based on whether agents learn or not
             q[[v]] <- reward[[2]]
             
+            #And agent models
+            models[[v]] <- reward[[3]]
+            
             #And household states
-            hhStates <- reward[[3]]
+            hhStates <- reward[[4]]
             
             #Update agent states
             agents[[v]]$state <- actionResults$newState[match(agents[[v]]$ID, actionResults$agentID)]
@@ -862,10 +1015,19 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
                            x, -1]
               )), 1))
             
+            #Have agents plan based on a single simulated action drawn from their environment models
+            agentPlanning<-plan(agents[[v]],reward[[4]],models[[v]],q[[v]])
+            
+            #Overwrite agent models with updated models
+            models[[v]]<-agentPlanning[[1]]
+            
+            #And overwrite agent action-value functions with updated functions
+            q[[v]]<-agentPlanning[[2]]
+            
             #And if this is the last day of the life span...
             if (l == lifeSpan) {
               #Save the last set of decisions as observations for social learning
-              observations[[v]] <- reward[[4]]
+              observations[[v]] <- reward[[5]]
             }
           }
         }
@@ -894,8 +1056,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           #Maintain those offspring that will be born into this environment
           shuffledOffspring[[v]][[1]]<-offspring[[v]][[1]][newEnv[[v]]==v,]
           shuffledOffspring[[v]][[2]]<-offspring[[v]][[2]][newEnv[[v]]==v]
-          shuffledOffspring[[v]][[3]][[1]]<-offspring[[v]][[3]][[1]][newEnv[[v]]==v]
-          shuffledOffspring[[v]][[3]][[2]]<-offspring[[v]][[3]][[1]][newEnv[[v]]==v]
+          shuffledOffspring[[v]][[3]]<-offspring[[v]][[3]][newEnv[[v]]==v]
           
           #Shuffle parent action values
           shuffledQs[[v]]<-q[[v]][as.character(offspring[[v]][[1]][newEnv[[v]]==v,]$ssParentID)]
@@ -904,10 +1065,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           for(n in (1:numEnv)[-v]){
             shuffledOffspring[[v]][[1]]<-rbind(shuffledOffspring[[v]][[1]],offspring[[n]][[1]][newEnv[[n]]==v,])
             shuffledOffspring[[v]][[2]]<-append(shuffledOffspring[[v]][[2]],offspring[[n]][[2]][newEnv[[n]]==v])
-            shuffledOffspring[[v]][[3]][[1]]<-append(shuffledOffspring[[v]][[3]][[1]],offspring[[n]][[3]][[1]][newEnv[[n]]==v])
-            shuffledOffspring[[v]][[3]][[2]]<-append(shuffledOffspring[[v]][[3]][[2]],offspring[[n]][[3]][[2]][newEnv[[n]]==v])
-            
-            shuffledQs[[v]]<-append(shuffledQs[[v]],q[[n]][as.character(offspring[[n]][[1]][newEnv[[n]]==v,]$ssParentID)])
+            shuffledOffspring[[v]][[3]]<-append(shuffledOffspring[[v]][[3]],offspring[[n]][[3]][newEnv[[n]]==v])
           }
          
          
@@ -934,7 +1092,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           offspring[[x]][[1]])
         q <- lapply(1:numEnv, function(x)
           offspring[[x]][[2]])
-        theories <- lapply(1:numEnv, function(x)
+        models <- lapply(1:numEnv, function(x)
           offspring[[x]][[3]])
         
       }
