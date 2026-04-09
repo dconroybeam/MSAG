@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 model-outputs/
+figures/
 Rplots.pdf

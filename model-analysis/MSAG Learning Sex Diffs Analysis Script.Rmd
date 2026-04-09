@@ -90,8 +90,8 @@ p3<-ggplot(data=data[data$environment==3,],
 
 ```{r save}
 
-ggsave("figures/MSAG Learning Sex Differences Figure 1.tiff",p2,width=10,height=8,units="in",dpi=300)
-ggsave("figures/MSAG Learning Sex Differences Figure 2.tiff",p1,width=10,height=8,units="in",dpi=300)
+ggsave("figures/MSAG Learning Sex Differences Figure 1.tiff",p1,width=10,height=8,units="in",dpi=300)
+ggsave("figures/MSAG Learning Sex Differences Figure 2.tiff",p2,width=10,height=8,units="in",dpi=300)
 ggsave("figures/MSAG Learning Sex Differences Figure 3.tiff",p3,width=15,height=8,units="in",dpi=300)
 
 ```

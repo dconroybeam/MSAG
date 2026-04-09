@@ -29,7 +29,7 @@ popSize <- 200
 
 #Generations#
 #Number of generations
-generations<-20
+generations<-10
 
 
 
@@ -188,7 +188,7 @@ agentGenerate <- function(m, actions, states) {
   }
   
   #Output agents
-  return(list(agents,q, theories))
+  return(list(agents,q, models))
 }
 
 
@@ -215,41 +215,24 @@ actionSelection<-function(agents,q,parentQs){
   #Loop through agents....
   chosenActions <- sapply(1:nrow(agents), function(x)
     
-    #With probability epsilon...
-    if(rbinom(1, 1, epsilonProb)){
-      
-      #Either choose an action according to parents' policy proportional to parents' policing genes
-      if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
+    #With probability proportional to parents' policing genes
+    if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
+      #Either choose an action according to parents' policy
         actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-      } else {
-      #Or do a random action
-        sample(actions, 1)
-      }
     } else {
-        #Otherwise pick which ever action has maximum action value (ties broken randomly)
+      #Or do epsilon greedy according to child's policy
+
+      #On epsilonProb % of trials...
+      if (rbinom(1, 1, epsilonProb)) {
+        #Choose an action randomly
+          sample(actions, 1)
+        } else{
+        #Or pick which ever action has maximum action value (ties broken randomly)
         actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+      }
     }
-
-    # #With probability proportional to parents' policing genes
-    # if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
-    #   #Either choose an action according to parents' policy
-    #     actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-    #                              max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-    # } else {
-    #   #Or do epsilon greedy according to child's policy
-    #   
-    #   #On epsilonProb % of trials...
-    #   if (rbinom(1, 1, epsilonProb)) {
-    #     #Choose an action randomly
-    #       sample(actions, 1)
-    #     } else{
-    #     #Or pick which ever action has maximum action value (ties broken randomly)
-    #     actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-    #                              max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-    #   }
-    # }
   )
       
   #Output the actions
@@ -654,53 +637,6 @@ planGenerate<-function(model){
 }
 
 
-#Planning#
-#A function for agent planning
-#Agents train their action-value function by mentally simulating prior actions sampled from their environment model
-plan <- function(agents, observations, models, q) {
-  #Loop through agents
-  for (a in 1:nrow(agents)) {
-    
-    #If the agent has no model...
-    if (is.na(models[[as.character(agents$ID[a])]])[1]) {
-      #Create a blank dataframe to store the agent's model
-      models[[as.character(agents$ID[a])]] <- observations[0, ]
-    }
-    
-    #If the model has become too large...
-    if(nrow(models[[as.character(agents$ID[a])]])>=100){
-      #Remove the oldest memory
-      #This prevents the model information from becoming stale for practice-dependent actions
-      models[[as.character(agents$ID[a])]]<-models[[as.character(agents$ID[a])]][-1,]
-
-    }
-    
-    #Update agent's model with their behavior from this round
-    models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[observations$agentID == agents$ID[a], ])
-    
-    #Generate observations to plan from
-    simObs <- t(sapply(1:planningLoops, function(x)
-      planGenerate(models[[as.character(agents$ID[a])]])))
-    
-    #Loop through plan steps
-    for (p in 1:nrow(simObs)) {
-      #Identify the action-value function for the start state
-      startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
-      
-      #Identify the expected action-value from choosing the most rewarding action in state S'
-      newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
-      
-      #Implements action-value update based on the simObs[p,] using q-learning
-      q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
-        startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
-      
-    }
-  }
-  
-  return(list(models, q))
-  
-}
-
 
 #Social Learning#
 #A function for learning a policy from observations rather than personal experiences
@@ -819,10 +755,12 @@ reproduce <- function(agents, v) {
   offspring[,24:(23+length(actions)+1)]<-0
   
   #Create a blank list for learned offspring theories as well
-  offspringTheories<-list(offspringQ,offspringQ)
+  offspringModels<-lapply(1:nrow(offspring),function(x) NA)
+  
+  names(offspringModels)<-offspring$ID
   
   #Output the offspring
-  return(list(offspring,offspringQ, offspringTheories))
+  return(list(offspring,offspringQ, offspringModels))
   
 }
 
@@ -1015,15 +953,6 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
                            x, -1]
               )), 1))
             
-            #Have agents plan based on a single simulated action drawn from their environment models
-            agentPlanning<-plan(agents[[v]],reward[[4]],models[[v]],q[[v]])
-            
-            #Overwrite agent models with updated models
-            models[[v]]<-agentPlanning[[1]]
-            
-            #And overwrite agent action-value functions with updated functions
-            q[[v]]<-agentPlanning[[2]]
-            
             #And if this is the last day of the life span...
             if (l == lifeSpan) {
               #Save the last set of decisions as observations for social learning
@@ -1066,6 +995,8 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
             shuffledOffspring[[v]][[1]]<-rbind(shuffledOffspring[[v]][[1]],offspring[[n]][[1]][newEnv[[n]]==v,])
             shuffledOffspring[[v]][[2]]<-append(shuffledOffspring[[v]][[2]],offspring[[n]][[2]][newEnv[[n]]==v])
             shuffledOffspring[[v]][[3]]<-append(shuffledOffspring[[v]][[3]],offspring[[n]][[3]][newEnv[[n]]==v])
+            
+            shuffledQs[[v]]<-append(shuffledQs[[v]],q[[n]][as.character(offspring[[n]][[1]][newEnv[[n]]==v,]$ssParentID)])
           }
          
          

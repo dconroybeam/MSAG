@@ -70,7 +70,6 @@ p1<-ggplot(data=plotData,
 
 ```{r save}
 
-ggsave("figures/MSAG Learning Evolution Figure (Pred 1).tiff",p0,width=12,height=6,units="in",dpi=300)
 ggsave("figures/MSAG Learning Evolution Figure.tiff",p1,width=12,height=6,units="in",dpi=300)
 
 ```
