@@ -586,7 +586,6 @@ rewardUpdate <- function(agents,
     
     #If the agents engage in model-based RL...
     if (agents$learningGene1[a] == 2) {
-      
       #If the agent has no model...
       if (is.na(models[[as.character(agents$ID[a])]])[1]) {
         #Create a blank dataframe to store the agent's model
@@ -604,32 +603,30 @@ rewardUpdate <- function(agents,
       #Update agent's model with their behavior from this round
       models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
       
-      #Every 5 rounds...
-        if ((l %% 5) == 0) {
-        #Generate observations to plan from
-        simObs <- t(sapply(1:planningLoops, function(x)
-          planGenerate(models[[as.character(agents$ID[a])]])))
+      
+      #Generate observations to plan from
+      simObs <- t(sapply(1:planningLoops, function(x)
+        planGenerate(models[[as.character(agents$ID[a])]])))
+      
+      #Loop through plan steps
+      for (p in 1:nrow(simObs)) {
+        #Identify the action-value function for the start state
+        startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
         
-        #Loop through plan steps
-        for (p in 1:nrow(simObs)) {
-          #Identify the action-value function for the start state
-          startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
-          
-          #Identify the expected action-value from choosing the most rewarding action in state S'
-          newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
-          
-          #Implements action-value update based on the simObs[p,] using q-learning
-          q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
-            startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
-        }
+        #Identify the expected action-value from choosing the most rewarding action in state S'
+        newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
+        
+        #Implements action-value update based on the simObs[p,] using q-learning
+        q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+          startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
       }
     }
   }
-    
-    #Update household states
-    hhStates <- newStates
-    
-    return(list(agents, q, models, hhStates, observations))
+  
+  #Update household states
+  hhStates <- newStates
+  
+  return(list(agents, q, models, hhStates, observations))
 }
 
 
@@ -780,10 +777,11 @@ clust<-makeCluster(detectCores()-4)
 registerDoParallel(clust)
 
 #Loop through model loops
-foreach(m = 0:(modelLoops - 1)) %:%
+foreach(m = 0:(modelLoops-1)) %dopar% {
   
-  #Loop through levels of environment predictability
-  foreach(e = environmentPredict) %dopar% {
+  #Loop through environment predictability
+  for (e in environmentPredict) {
+    
     ###Environment Setup###
     
     #Set up environments
@@ -1039,6 +1037,8 @@ foreach(m = 0:(modelLoops - 1)) %:%
     
     
   }
+  
+}
   
 
 stopCluster(clust)

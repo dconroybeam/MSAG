@@ -23,7 +23,7 @@ modelLoops<-length(populations)/numEnv
 
 
 #Set desired population size
-popSize <- 200
+popSize <- 300
 
 
 
@@ -207,34 +207,30 @@ resample<-function(x,n){
 
 #Action Selection#
 #A function for selecting actions given agents' action-value functions and learning rule
-actionSelection<-function(agents,q,parentQs){
-  
+actionSelection <- function(agents, q, parentQs) {
   #Calculate probability of making an exploratory move
-  epsilonProb<-max(c(.05, epsilon - epsilonDecay * l))
+  epsilonProb <- max(c(.05, epsilon - epsilonDecay * l))
   
   #Loop through agents....
   chosenActions <- sapply(1:nrow(agents), function(x)
     
-    #With probability proportional to parents' policing genes
-    if((g > 1) & (rbinom(1,1,agents$ssParentPolice[x]))){
-      #Either choose an action according to parents' policy
+    #On epsilonProb % of trials...
+    if (rbinom(1, 1, epsilonProb)) {
+      #With probability proportional to parents' policing genes
+      if ((g > 1) & (rbinom(1, 1, agents$ssParentPolice[x]))) {
+        #Either choose an action according to parents' policy
         actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
                                  max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-    } else {
-      #Or do epsilon greedy according to child's policy
-
-      #On epsilonProb % of trials...
-      if (rbinom(1, 1, epsilonProb)) {
-        #Choose an action randomly
-          sample(actions, 1)
-        } else{
-        #Or pick which ever action has maximum action value (ties broken randomly)
-        actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-                                 max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+      } else {
+        #Or choose an action randomly
+        sample(actions, 1)
       }
-    }
-  )
-      
+    } else{
+      #Or pick which ever action has maximum action value (ties broken randomly)
+      actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+                               max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+    })
+  
   #Output the actions
   return(chosenActions)
   
@@ -408,7 +404,7 @@ environmentSetup<-function(){
                                 "childCompat"=0)
   
   #Randomly generate an environment in which optimal foraging policy is either sex-differentiated or not
-  if (rbinom(1, 1, .8)) {
+  if (rbinom(1, 1, .5)) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
@@ -492,6 +488,30 @@ transitions<-function(agents,chosenActions,tMatrices){
   
   #Output result tuples
   return(result)
+}
+
+
+
+#A function for updating q based on an environment model
+planGenerate<-function(model){
+  
+  #Pick all prior trials that correspond to a randomly chosen starting household state
+  simObs <- model[model$starthhState == resample(unique(model$starthhState), 1), ]
+  
+  #Pick all prior trials that correspond to a randomly chosen start state within that household state
+  simObs <- simObs[simObs$startState == sample(unique(simObs$startState), 1), ]
+  
+  #Pick all prior trials that correspond to a randomly chosen prior action in that state
+  simObs <- simObs[simObs$action == sample(unique(simObs$action), 1), ]
+  
+  #Finally, if more than one prior trial remains...
+  if (nrow(simObs) > 1) {
+    #...pick one at random
+    simObs <- simObs[sample(1:nrow(simObs), 1), ]
+  }
+  
+  return(simObs)
+  
 }
 
 
@@ -585,8 +605,6 @@ rewardUpdate <- function(agents,
       #Update agent's model with their behavior from this round
       models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
       
-      #Every 5 rounds...
-      if ((l %% 10) == 0) {
       #Generate observations to plan from
       simObs <- t(sapply(1:planningLoops, function(x)
         planGenerate(models[[as.character(agents$ID[a])]])))
@@ -603,7 +621,6 @@ rewardUpdate <- function(agents,
         q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
           startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
       }
-    }
   }
     
     #Update household states
@@ -614,36 +631,12 @@ rewardUpdate <- function(agents,
 
 
 
-#A function for updating q based on an environment model
-planGenerate<-function(model){
-  
-  #Pick all prior trials that correspond to a randomly chosen starting household state
-  simObs <- model[model$starthhState == resample(unique(model$starthhState), 1), ]
-  
-  #Pick all prior trials that correspond to a randomly chosen start state within that household state
-  simObs <- simObs[simObs$startState == sample(unique(simObs$startState), 1), ]
-  
-  #Pick all prior trials that correspond to a randomly chosen prior action in that state
-  simObs <- simObs[simObs$action == sample(unique(simObs$action), 1), ]
-  
-  #Finally, if more than one prior trial remains...
-  if (nrow(simObs) > 1) {
-    #...pick one at random
-    simObs <- simObs[sample(1:nrow(simObs), 1), ]
-  }
-  
-  return(simObs)
-  
-}
-
-
-
 #Social Learning#
 #A function for learning a policy from observations rather than personal experiences
 socialLearn<-function(q,model){
   
 #Generate observations to plan from
-  simObs <- t(sapply(1:500, function(x)
+  simObs <- t(sapply(1:200, function(x)
     planGenerate(model)))
 
   #Loop through plan steps

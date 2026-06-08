@@ -8,7 +8,7 @@ library(doParallel)
 
 #Populations#
 #The number of agent populations (determined by prior simulation)
-populations<-which(grepl("PREDICT HI",list.files("model-outputs/foraging/learning-evolution/",full.names=T)))
+populations<-which(grepl("PREDICT LO",list.files("model-outputs/foraging/learning-evolution/",full.names=T)))
 
 
 
@@ -23,7 +23,7 @@ modelLoops<-length(populations)/numEnv
 
 
 #Set desired population size
-popSize <- 200
+popSize <- 300
 
 
 
@@ -34,7 +34,7 @@ generations<-20
 
 
 #Mutation Rate#
-mutationRate<-.01
+mutationRate<-.05
 
 
 
@@ -94,7 +94,7 @@ epsilonDecay<-1/lifeSpan
 
 #Environmental Change#
 #How likely ecological variables are to change each generation
-envChange<-c(0,1)
+envChange<-c(1,0)
 
 
 
@@ -106,6 +106,11 @@ numObservations<-100
 
 #Number of loops for planning agents to iterate
 planningLoops<-20
+
+
+
+#A fitness cost for social learning
+socialLearningCost<-0.1
 
 ```
 
@@ -134,7 +139,7 @@ agentGenerate <- function(m, actions, states) {
     row.names(agents[[l]])<-1:nrow(agents[[l]])
     
     #Limit to agents[[l]] that learn their foraging policy
-    agents[[l]]<-agents[[l]][agents[[l]]$learningGene1==1,]
+    agents[[l]]<-agents[[l]][agents[[l]]$learningGene1==2,]
     
     agents[[l]]<-agents[[l]][,1:17]
     
@@ -393,7 +398,7 @@ environmentSetup<-function(){
                                 "childCompat"=0)
   
   #Randomly generate an environment in which optimal foraging policy is either sex-differentiated or not
-  if (rbinom(1, 1, .8)) {
+  if (rbinom(1, 1, .5)) {
     foragingVariables$productivity <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$practice <- rep(c(1,rep(0,length(actions[-1])/2-1)),2)
     foragingVariables$risk <- rep(c(1,0),each=length(actions[-1])/2)
@@ -505,6 +510,7 @@ planGenerate<-function(model){
 
 
 
+
 #Reward Calculation#
 #A function for determining agents' reward given their states and actions
 rewardUpdate <- function(agents,
@@ -576,49 +582,46 @@ rewardUpdate <- function(agents,
     #Implements action-value update using Q-learning
     q[[as.character(agents$ID[a])]][[agents$hhState[a]]][actionResults$action[match(agents$ID[a], actionResults$agentID)], agents$state[a]] <-
       currentStateQ + learningRate * (agentReward + (discount * newStateQ - currentStateQ))
-
-      #If the agent has no model...
-      if (is.na(models[[as.character(agents$ID[a])]])[1]) {
-        #Create a blank dataframe to store the agent's model
-        models[[as.character(agents$ID[a])]] <- observations[0, ]
-      }
+    
+    #If the agent has no model...
+    if (is.na(models[[as.character(agents$ID[a])]])[1]) {
+      #Create a blank dataframe to store the agent's model
+      models[[as.character(agents$ID[a])]] <- observations[0, ]
+    }
+    
+    #If the model has become too large...
+    if (nrow(models[[as.character(agents$ID[a])]]) >= 100) {
+      #Remove the oldest memory
+      #This prevents the model information from becoming stale for practice-dependent actions
+      models[[as.character(agents$ID[a])]] <- models[[as.character(agents$ID[a])]][-1, ]
       
-      #If the model has become too large...
-      if (nrow(models[[as.character(agents$ID[a])]]) >= 100) {
-        #Remove the oldest memory
-        #This prevents the model information from becoming stale for practice-dependent actions
-        models[[as.character(agents$ID[a])]] <- models[[as.character(agents$ID[a])]][-1, ]
-        
-      }
+    }
+    
+    #Update agent's model with their behavior from this round
+    models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
+    
+    #Generate observations to plan from
+    simObs <- t(sapply(1:planningLoops, function(x)
+      planGenerate(models[[as.character(agents$ID[a])]])))
+    
+    #Loop through plan steps
+    for (p in 1:nrow(simObs)) {
+      #Identify the action-value function for the start state
+      startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
       
-      #Update agent's model with their behavior from this round
-      models[[as.character(agents$ID[a])]] <- rbind(models[[as.character(agents$ID[a])]], observations[match(agents$ID[a], observations$agentID), ])
+      #Identify the expected action-value from choosing the most rewarding action in state S'
+      newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
       
-      #Every 5 rounds...
-      if ((l %% 10) == 0) {
-      #Generate observations to plan from
-      simObs <- t(sapply(1:planningLoops, function(x)
-        planGenerate(models[[as.character(agents$ID[a])]])))
-      
-      #Loop through plan steps
-      for (p in 1:nrow(simObs)) {
-        #Identify the action-value function for the start state
-        startStateQ <- q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState]
-        
-        #Identify the expected action-value from choosing the most rewarding action in state S'
-        newStateQ <- max(q[[as.character(agents$ID[a])]][[simObs[p, ]$newhhState]][, simObs[p, ]$newState])
-        
-        #Implements action-value update based on the simObs[p,] using q-learning
-        q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
-          startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
-      }
+      #Implements action-value update based on the simObs[p,] using q-learning
+      q[[as.character(agents$ID[a])]][[simObs[p, ]$starthhState]][simObs[p, ]$action, simObs[p, ]$startState] <-
+        startStateQ + learningRate * (simObs[p, ]$reward + (discount * newStateQ - startStateQ))
     }
   }
-    
-    #Update household states
-    hhStates <- newStates
-    
-    return(list(agents, q, models, hhStates, observations))
+  
+  #Update household states
+  hhStates <- newStates
+  
+  return(list(agents, q, models, hhStates, observations))
 }
 
 
@@ -628,7 +631,7 @@ rewardUpdate <- function(agents,
 socialLearn<-function(q,model){
   
 #Generate observations to plan from
-  simObs <- t(sapply(1:500, function(x)
+  simObs <- t(sapply(1:200, function(x)
     planGenerate(model)))
 
   #Loop through plan steps
@@ -654,6 +657,9 @@ socialLearn<-function(q,model){
 #Reproduce#
 #Produce offspring from parents
 reproduce <- function(agents, v) {
+  
+  #Deduct a fitness cost from agnets that engage in social learning
+  agents$reward[agents$socialLearningGene1>0]<-agents$reward[agents$socialLearningGene1>0]*(1-socialLearningCost)
   
   #Calculate total reward achieved by household
   hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))
@@ -796,11 +802,6 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
       
       #Loop through generations
       for (g in 1:generations) {
-        
-        print(date())
-        print(paste0("g = ",g))
-        print(paste0("c = ",c))
-        print(table(unlist(sapply(agents,function(x) x$socialLearningGene1))))
         
         #Randomly change environments
         if (rbinom(1, 1, c)) {
