@@ -18,7 +18,7 @@ generations<-30
 
 
 #Minimum resources for offspring viability
-resourceThreshold<-5
+resourceThreshold<-c(1,5)
 
 
 
@@ -111,10 +111,10 @@ gameteProduce <- function(agent) {
 
 #Reproduce#
 #Produce offspring from gametes
-reproduce <- function(focalGamete, targetGamete) {
-  #If the gametes together meet the minimum resource threshold
-  if ((focalGamete$gameteSizeExpressed + 
-       targetGamete$gameteSizeExpressed) >= resourceThreshold) {
+reproduce <- function(focalGamete, targetGamete, threshold) {
+  #If the gametes together are large enough to survive...
+  if (rbinom(1,1,(1/(1+exp(-3*((focalGamete$gameteSizeExpressed + 
+       targetGamete$gameteSizeExpressed)-threshold)))))==1) {
     #Generate the offspring from gametes
     #Randomly determine which gamete's genes will be in the expressed (first) position
     if (rbinom(1, 1, .5)) {
@@ -166,7 +166,7 @@ reproduce <- function(focalGamete, targetGamete) {
 
 #Gamete Fusion#
 #A function for simulating fusion of gametes
-fusion <- function(gametes) {
+fusion <- function(gametes, threshold) {
   #Create a blank offspring dataframe
   offspring <- data.frame(
     "gameteSizeGene1" = NA,
@@ -195,7 +195,7 @@ fusion <- function(gametes) {
                                           focalGamete$fusionTargetExpressed)),]
     
     #Have the gametes fuse to produce an offspring
-    offspring<-rbind(offspring,reproduce(focalGamete, targetGamete))
+    offspring<-rbind(offspring,reproduce(focalGamete, targetGamete, threshold))
     
     #Remove the target gamete from the gamete matrix
     gametes<-gametes[-which.min(abs(gametes$gameteSizeExpressed -
@@ -218,6 +218,8 @@ fusion <- function(gametes) {
 clust<-makeCluster(detectCores()-4)
 registerDoParallel(clust)
 
+for(t in resourceThreshold){
+  
 #Loop through model loops
 foreach(p = populations) %dopar% {
   #Generate the agents
@@ -241,7 +243,7 @@ foreach(p = populations) %dopar% {
       )))
 
     #Have gametes fuse to produce offspring
-    offspring<-fusion(gametes)
+    offspring<-fusion(gametes, t)
     
     #Limit number of offspring to popSize
     agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring),popSize))), ]
@@ -252,7 +254,8 @@ foreach(p = populations) %dopar% {
   }
   
   #Create a unique filename and filepath
-  path <- "model-outputs/sex-evolution/MSAG Sex Evolution Population "
+  path <- paste0("model-outputs/sex-evolution/MSAG Sex Evolution Population ",
+                 ifelse(t==min(resourceThreshold),"THRESH LO ","THRESH HI "))
   
   format <- ".csv"
   date <- format(Sys.time(), format = "%Y%m%d %H%M")
@@ -261,6 +264,8 @@ foreach(p = populations) %dopar% {
   #Save model data
   write.csv(data, file = file, row.names = F)
 }
+}
+
 
 stopCluster(clust)
 
