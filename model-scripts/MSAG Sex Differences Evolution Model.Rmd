@@ -7,7 +7,7 @@ library(doParallel)
 ```{r parameters}
 
 #The number of agent populations (determined by prior simulation)
-populations<-length(list.files("model-outputs/sex-evolution/",full.names=T))
+populations<-which(grepl("THRESH HI",list.files("model-outputs/sex-evolution/",full.names=T)))
 
 
 
@@ -118,8 +118,8 @@ gameteProduce <- function(agent) {
 #Produce offspring from gametes
 reproduce <- function(focalGamete, targetGamete) {
   #If the gametes together meet the minimum resource threshold
-  if ((focalGamete$gameteSizeExpressed + 
-       targetGamete$gameteSizeExpressed) >= resourceThreshold) {
+  if (rbinom(1,1,(1/(1+exp(-3*((focalGamete$gameteSizeExpressed + 
+       targetGamete$gameteSizeExpressed)-resourceThreshold)))))==1) {
     #Generate the offspring from gametes
     #Randomly determine which gamete's genes will be in the expressed (first) position
     if (rbinom(1, 1, .5)) {
@@ -253,7 +253,7 @@ registerDoParallel(clust)
 
 
 #Loop through model loops
-foreach(p = 1:populations) %dopar% {
+foreach(p = populations) %dopar% {
   
   #Load in the agent population
   agents <- agentGenerate(p)
