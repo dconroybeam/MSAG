@@ -107,6 +107,16 @@ numObservations<-100
 #Number of loops for planning agents to iterate
 planningLoops<-20
 
+
+
+#A fitness cost for social learning
+socialLearningCost<-0.01
+
+
+
+#A fitness cost for social learning
+policingCost<-0.01
+
 ```
 
 
@@ -133,7 +143,7 @@ agentGenerate <- function(m, actions, states) {
     #Relabel rows
     row.names(agents[[l]])<-1:nrow(agents[[l]])
     
-    #Limit to agents[[l]] that learn their foraging policy
+    #Limit to agents[[l]] that socially learn their foraging policy
     agents[[l]]<-agents[[l]][agents[[l]]$socialLearningGene1==2,]
     
     agents[[l]]<-agents[[l]][,1:19]
@@ -662,6 +672,10 @@ socialLearn<-function(q,model){
 #Reproduce#
 #Produce offspring from parents
 reproduce <- function(agents, v) {
+  
+  #Deduct a fitness cost from agents that engage in gender policing
+  agents$reward<-ifelse(agents$policingGene1>.10,agents$reward*(1-policingCost),
+                        agents$reward)
   
   #Calculate total reward achieved by household
   hhReward<-sapply(unique(agents$hh),function(x) sum(agents$reward[agents$hh==x]))

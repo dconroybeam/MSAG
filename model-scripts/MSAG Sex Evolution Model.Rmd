@@ -18,12 +18,12 @@ generations<-30
 
 
 #Minimum resources for offspring viability
-resourceThreshold<-c(1,5)
+resourceThreshold<-c(5,1)
 
 
 
 #Total resources agents will have for producing gametes
-resources<-resourceThreshold*20
+resources<-max(resourceThreshold)*20
 
 
 
@@ -70,10 +70,10 @@ agentGenerate <- function(population) {
   #Each agent has two sets of genes (inherited from parents)
   #only the first gene will be expressed in gametes produced
   agents <- cbind(agents,data.frame(
-    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
-    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
-    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold),
-    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), resourceThreshold)
+    "gameteSizeGene1" = runif(nrow(agents), (resources / maxGametes), max(resourceThreshold)),
+    "fusionTargetGene1" = runif(nrow(agents), (resources / maxGametes), max(resourceThreshold)),
+    "gameteSizeGene2" = runif(nrow(agents), (resources / maxGametes), max(resourceThreshold)),
+    "fusionTargetGene2" = runif(nrow(agents), (resources / maxGametes), max(resourceThreshold))
   ))
   
   
@@ -149,7 +149,7 @@ reproduce <- function(focalGamete, targetGamete, threshold) {
     
     #Keep offspring traits within bounds
     offspring <- apply(offspring, 2, function(x)
-      ifelse(x > resourceThreshold, resourceThreshold + (resourceThreshold-x), ifelse(
+      ifelse(x > max(resourceThreshold), max(resourceThreshold) + (max(resourceThreshold)-x), ifelse(
         x < (resources / maxGametes), (resources / maxGametes) + ((resources / maxGametes)-x), x
       )))
     
@@ -218,52 +218,59 @@ fusion <- function(gametes, threshold) {
 clust<-makeCluster(detectCores()-4)
 registerDoParallel(clust)
 
-for(t in resourceThreshold){
-  
-#Loop through model loops
-foreach(p = populations) %dopar% {
-  #Generate the agents
-  agents <- agentGenerate(p)
-  
-  #Remove ID and sex gene columns as I won't actually be using them
-  agents<-agents[,-(1:2)]
-  
-  #Create a dataframe to store agents
-  data<-cbind("modelLoop"=p,"generation"=0,agents)
-  
-  #Loop through generations
-  for (g in 1:generations) {
-    #Generate gametes for each agent
-    gametes <- sapply(1:nrow(agents), function(x)
-      
-      as.matrix(t(
-        sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
-          gameteProduce(agents[x, ]))
-        
-      )))
 
-    #Have gametes fuse to produce offspring
-    offspring<-fusion(gametes, t)
+for (t in resourceThreshold) {
+  
+  #Loop through model loops
+  foreach(p = populations) %dopar% {
+    #Generate the agents
+    agents <- agentGenerate(p)
     
-    #Limit number of offspring to popSize
-    agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring),popSize))), ]
+    #Remove ID and sex gene columns as I won't actually be using them
+    agents <- agents[, -(1:2)]
     
-    #Save agents to overall data frame
-    data<-rbind(data,cbind("modelLoop"=p,"generation"=g,agents))
+    #Create a dataframe to store agents
+    data <- cbind("modelLoop" = p, "generation" = 0, agents)
     
+    #Loop through generations
+    for (g in 1:generations) {
+      #Generate gametes for each agent
+      gametes <- sapply(1:nrow(agents), function(x)
+        
+        as.matrix(t(
+          sapply(1:floor(resources / agents$gameteSizeGene1[x]), function(y)
+            gameteProduce(agents[x, ]))
+          
+        )))
+      
+      #Have gametes fuse to produce offspring
+      offspring <- fusion(gametes, t)
+      
+      #Limit number of offspring to popSize
+      agents <- offspring[sample(1:nrow(offspring), min(c(nrow(offspring), popSize))), ]
+      
+      #Save agents to overall data frame
+      data <- rbind(data, cbind(
+        "modelLoop" = p,
+        "generation" = g,
+        agents
+      ))
+      
+    }
+    
+    #Create a unique filename and filepath
+    path <- paste0(
+      "model-outputs/sex-evolution/MSAG Sex Evolution Population ",
+      ifelse(t == min(resourceThreshold), "THRESH LO ", "THRESH HI ")
+    )
+    
+    format <- ".csv"
+    date <- format(Sys.time(), format = "%Y%m%d %H%M")
+    file <- file.path(paste0(path, p, " ", date, format))
+    
+    #Save model data
+    write.csv(data, file = file, row.names = F)
   }
-  
-  #Create a unique filename and filepath
-  path <- paste0("model-outputs/sex-evolution/MSAG Sex Evolution Population ",
-                 ifelse(t==min(resourceThreshold),"THRESH LO ","THRESH HI "))
-  
-  format <- ".csv"
-  date <- format(Sys.time(), format = "%Y%m%d %H%M")
-  file <- file.path(paste0(path, p, " ", date, format))
-  
-  #Save model data
-  write.csv(data, file = file, row.names = F)
-}
 }
 
 

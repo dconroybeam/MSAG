@@ -110,7 +110,7 @@ planningLoops<-20
 
 
 #A fitness cost for social learning
-socialLearningCost<-0.1
+socialLearningCost<-0.01
 
 ```
 
@@ -658,7 +658,7 @@ socialLearn<-function(q,model){
 #Produce offspring from parents
 reproduce <- function(agents, v) {
   
-  #Deduct a fitness cost from agnets that engage in social learning
+  #Deduct a fitness cost from agents that engage in social learning
   agents$reward[agents$socialLearningGene1>0]<-agents$reward[agents$socialLearningGene1>0]*(1-socialLearningCost)
   
   #Calculate total reward achieved by household
