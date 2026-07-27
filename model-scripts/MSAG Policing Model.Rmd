@@ -110,12 +110,7 @@ planningLoops<-20
 
 
 #A fitness cost for social learning
-socialLearningCost<-0.01
-
-
-
-#A fitness cost for social learning
-policingCost<-0.01
+policingCost<-0.05
 
 ```
 
@@ -224,22 +219,24 @@ actionSelection <- function(agents, q, parentQs) {
   #Loop through agents....
   chosenActions <- sapply(1:nrow(agents), function(x)
     
-    #On epsilonProb % of trials...
-    if (rbinom(1, 1, epsilonProb)) {
-      #With probability proportional to parents' policing genes
-      if ((g > 1) & (rbinom(1, 1, agents$ssParentPolice[x]))) {
-        #Either choose an action according to parents' policy
-        actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-                                 max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-      } else {
+    #With probability proportional to parents' policing genes
+    if (rbinom(1, 1, agents$ssParentPolice[x])) {
+      #Choose an action according to parents' policy
+      actions[resample(which(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+                               max(parentQs[[as.character(agents$ssParentID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
+    } else {
+      #Otherwise...
+      #On epsilonProb % of trials...
+      if (rbinom(1, 1, epsilonProb)) {
         #Or choose an action randomly
         sample(actions, 1)
+      } else {
+        #Or pick which ever action has maximum action value (ties broken randomly)
+        actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
+                                 max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
       }
-    } else{
-      #Or pick which ever action has maximum action value (ties broken randomly)
-      actions[resample(which(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]] ==
-                               max(q[[as.character(agents$ID[x])]][[agents$hhState[x]]][, agents$state[x]])), 1)]
-    })
+    }
+  )
   
   #Output the actions
   return(chosenActions)

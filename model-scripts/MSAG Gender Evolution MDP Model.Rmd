@@ -110,7 +110,7 @@ planningLoops<-20
 
 
 #A fitness cost for social learning
-socialLearningCost<-0.01
+socialLearningCost<-0.05
 
 ```
 
