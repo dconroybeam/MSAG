@@ -1044,7 +1044,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           m + 1,
           "-",
           v,
-          ifelse(e == max(envChange), " CHANGE HI ", " CHANGE LO "),
+          ifelse(c == max(envChange), " CHANGE HI ", " CHANGE LO "),
           date,
           format
         ))
