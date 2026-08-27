@@ -671,7 +671,7 @@ socialLearn<-function(q,model){
 reproduce <- function(agents, v) {
   
   #Deduct a fitness cost from agents that engage in gender policing
-  agents$reward<-ifelse(agents$policingGene1>.10,agents$reward*(1-policingCost),
+  agents$reward<-ifelse(agents$policingGene1>.25,agents$reward*(1-policingCost),
                         agents$reward)
   
   #Calculate total reward achieved by household
@@ -1044,7 +1044,7 @@ foreach(m = 0:(modelLoops-1)) %dopar% {
           m + 1,
           "-",
           v,
-          ifelse(e == max(envChange), " CHANGE HI ", " CHANGE LO "),
+          ifelse(c == max(envChange), " CHANGE HI ", " CHANGE LO "),
           date,
           format
         ))
