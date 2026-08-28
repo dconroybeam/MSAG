@@ -11,12 +11,19 @@ library(ggplot2)
 #Load all model outputs
 data<-lapply(list.files("model-outputs/sex-evolution",full.names=T)[which(grepl("MSAG",list.files("model-outputs/sex-evolution",full.names=T)))],read.csv)
 
+
+for (i in 1:length(data)) {
+  data[[i]]$threshold <- ifelse(i %in% which(grepl(
+    "THRESH LO",
+    list.files("model-outputs/sex-evolution", full.names = T)
+  )),
+  "Low Viability Threshold",
+  "High Viability Threshold")
+}
+
 #Rbind all CSVs together into one dataframe
 data<-do.call("rbind",data)
 
-#Label each gamete as to whether it is above or below 50% of the resource threshold
-#This will allow me to see whether "bigger" gametes are getting bigger as smaller gametes are getting smaller
-data$bigOrSmall<-ifelse(data$gameteSizeGene1>median(data$gameteSizeGene1),"big","small")
 
 ```
 
@@ -25,7 +32,6 @@ data$bigOrSmall<-ifelse(data$gameteSizeGene1>median(data$gameteSizeGene1),"big",
 ```{r analysis}
 
 plotData<-data[data$generation %in% seq(0,30,15), ]
-
 
 ```
 
@@ -41,7 +47,7 @@ p1<-ggplot(data=plotData,
            size=gameteSizeGene1))+
   geom_point(pch=21,color=I("black"))+
   theme(legend.position="none")+
-  facet_wrap(~generation,nrow=1,scales="free")+
+  facet_grid(threshold~generation,scales="free")+
   labs(x="Gamete Size",y="")
 
 
@@ -49,12 +55,12 @@ p1<-ggplot(data=plotData,
 p1hist<-ggplot(data=plotData,
        aes(x=gameteSizeGene1))+
   geom_histogram(fill=I("steelblue"),color=I("black"))+
-  facet_wrap(~generation,nrow=1,scales="free")+
+  facet_grid(threshold~generation,scales="free")+
   labs(x="Gamete Size", y="Frequency")
 
 
 #Plot gamete size against fusion target in the final generation
-p2<-ggplot(data=data[data$generation==max(data$generation),],
+p2<-ggplot(data=data[data$generation==max(data$generation) & data$threshold=="High Viability Threshold",],
        aes(y=fusionTargetGene1,
            x=gameteSizeGene1))+
   labs(x="Gamete Size",y="Fusion Target")+
@@ -69,7 +75,7 @@ p2<-ggplot(data=data[data$generation==max(data$generation),],
 
 ggsave("figures/MSAG Sex Evolution Petri Figure.tiff",p1,width=12,height=3.5,units="in",dpi=300)
 
-ggsave("figures/MSAG Sex Evolution Histogram Figure.tiff",p1hist,width=12,height=3.5,units="in",dpi=300)
+ggsave("figures/MSAG Sex Evolution Histogram Figure.tiff",p1hist,width=12,height=6,units="in",dpi=300)
 
 ggsave("figures/MSAG Sex Evolution Fusion Target Figure.tiff",p2,width=12,height=6,dpi=300)
 
