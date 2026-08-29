@@ -1,6 +1,7 @@
 ```{r packages}
 
 library(ggplot2)
+library(cowplot)
 
 ```
 
@@ -68,6 +69,9 @@ p2<-ggplot(data=plotData,
   theme_grey(base_size=20)+
   theme(legend.position="none")
 
+
+p3<-plot_grid(p2,p1,labels=c('A','B'),rel_widths = c(1,1.66))
+
 ```
 
 
@@ -77,5 +81,8 @@ p2<-ggplot(data=plotData,
 ggsave("figures/MSAG Competition Figure.tiff",p1,width=7.5,height=6,units="in",dpi=300)
 
 ggsave("figures/MSAG Parenting Figure.tiff",p2,width=5,height=6,units="in",dpi=300)
+
+ggsave("figures/MSAG SexDiffs Figure.tiff",p3,width=10,height=6,units="in",dpi=300)
+
 ```
 

@@ -11,7 +11,8 @@ library(ggplot2)
 #Load all model outputs
 data<-lapply(list.files("model-outputs/sex-evolution",full.names=T)[which(grepl("MSAG",list.files("model-outputs/sex-evolution",full.names=T)))],read.csv)
 
-
+#Label each run with the viability threshold for zygotes
+#Unfortunately I forgot to save this within the data files, so it has to be inferred from filenames
 for (i in 1:length(data)) {
   data[[i]]$threshold <- ifelse(i %in% which(grepl(
     "THRESH LO",
