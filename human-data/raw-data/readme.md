@@ -1,1 +1,0 @@
-A folder for raw, unprocessed data files.
