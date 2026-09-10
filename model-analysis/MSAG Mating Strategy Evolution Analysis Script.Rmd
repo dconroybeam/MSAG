@@ -50,11 +50,13 @@ plotData$parentinguci<-c(tapply(data$investParentingGene1,list(data$generation,d
 
 ```{r plot}
 
+plotData$selectionPI<-factor(plotData$selectionPI,labels=c("Low Selection\non Parenting (g = 0.2)","High Selection\non Parenting (g = 0.8)"))
+
 #Plot mating-parenting tradeoff over time as a function of gamete size and selection on parental investment
 p1<-ggplot(data=plotData,
            aes(x=generation,y=mpTradeoffMean,color=as.factor(bigOrSmall)))+
   geom_errorbar(aes(ymin=tradeofflci,ymax=tradeoffuci))+
-  labs(x="Generation",y="Mating-Parenting Tradeoff",color="Gamete Size")+
+  labs(x="Generation",y="Investment in Mating Over Parenting",color="Gamete Size")+
   scale_color_manual(values=c("orangered","steelblue"))+
   geom_point(size=2)+
   geom_line(linewidth=1)+
